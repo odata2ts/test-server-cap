@@ -1,0 +1,7 @@
+node_modules
+gen
+@cds-models
+db.sqlite
+
+# CSV seed data is column-aligned on purpose - do not reformat
+db/data

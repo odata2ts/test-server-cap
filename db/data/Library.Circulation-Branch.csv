@@ -1,0 +1,4 @@
+Id,Name,Address_Street,Address_City,Address_PostalCode,Address_Country,Location,CatchmentArea,LowestFloor,FloorPlanOrigin,FloorPlanShapes,OpensAt,ClosesAt,Amenities,Population
+1,Zentralbibliothek,Hauptstrasse 1,Hamburg,20095,DE,POINT (9.9937 53.5511),"POLYGON ((9.90 53.50, 10.10 53.50, 10.10 53.62, 9.90 53.62, 9.90 53.50))",-2,POINT (0 0),"GEOMETRYCOLLECTION (POINT (0 0), LINESTRING (0 0, 10 0))",09:00:00,20:00:00,31,1841000
+2,Stadtteilbibliothek Nord,Ringweg 12,Hamburg,22297,DE,POINT (10.0153 53.6012),"POLYGON ((9.98 53.58, 10.06 53.58, 10.06 53.63, 9.98 53.63, 9.98 53.58))",0,POINT (0 0),"GEOMETRYCOLLECTION (POINT (5 5))",10:00:00,18:00:00,11,120000
+3,Fahrbibliothek-Depot,Am Hafen 3,Hamburg,20457,DE,POINT (9.9700 53.5400),"POLYGON ((9.95 53.53, 10.00 53.53, 10.00 53.55, 9.95 53.55, 9.95 53.53))",-1,POINT (0 0),GEOMETRYCOLLECTION EMPTY,08:00:00,16:00:00,2,0

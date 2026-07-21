@@ -1,0 +1,10 @@
+node_modules
+gen
+@cds-models
+
+*.sqlite
+*.sqlite-journal
+
+.env
+*.log
+.DS_Store
