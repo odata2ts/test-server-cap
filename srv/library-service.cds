@@ -4,10 +4,10 @@
  * The CDS name `Library.Service` is chosen so that the emitted EDM schema namespace matches the
  * container namespace of the reference model (`Library.Service`).
  *
- * GAP G3: CAP renders exactly *one* flat EDM schema per service. The four namespaces of the
- * reference model (`Library.Catalog`, `Library.Circulation`, `PublisherRegistry`, `Library.Service`)
- * all collapse into this one, which is also why `PublisherRegistry.Branch` had to be renamed
- * (see db/publishers.cds).
+ * CAP renders exactly one EDM schema per service, so the four namespaces of the reference model
+ * (`Library.Catalog`, `Library.Circulation`, `PublisherRegistry`, `Library.Service`) all collapse
+ * into this one - which is also why `PublisherRegistry.Branch` had to be renamed (see
+ * db/publishers.cds). FEATURE-COVERAGE.md §1.4.
  *
  * All bound operations are declared here rather than next to their entities in db/: `as projection
  * on` does not carry `actions {}` blocks from the db layer into the service, and entity-returning
@@ -25,14 +25,15 @@ service Service @(path: '/odata/v4/library') {
   // Media
   //
   // Reference model: a single entity set `Media` over the abstract `Medium`, with all media-bound
-  // operations declared once against that base type. See GAP G2 in db/catalog.cds - one entity set
-  // per concrete type, and the bound operations repeated per type, is the closest CAP can get.
+  // operations declared once against that base type. CDS models hierarchies with aspects rather
+  // than inheritance, so this is table-per-leaf-class: one entity set per concrete type, and the
+  // bound operations repeated per type. See db/catalog.cds and FEATURE-COVERAGE.md §1.1.
   // -------------------------------------------------------------------------------------------
 
   /**
    * `@Core.AlternateKeys` renders correctly into `$metadata`, but CAP's runtime does **not**
-   * resolve alternate-key addressing: `Books(ISBN='...')` fails. Kept deliberately (GAP G6) so the
-   * discrepancy between metadata promise and runtime behaviour is observable.
+   * resolve alternate-key addressing: `Books(ISBN='...')` fails. Kept deliberately so the
+   * discrepancy between metadata promise and runtime behaviour stays observable - §4.2.
    */
   @Capabilities.SearchRestrictions.Searchable: true
   @Core.AlternateKeys                        : [{Key: [{Name: ISBN}]}]
@@ -42,9 +43,8 @@ service Service @(path: '/odata/v4/library') {
                               function AvailableLanguages(in : many $self) returns array of String;
 
                               /**
-                               * GAP G5: `IsComposable="true"` in the reference model, always
-                               * `false` in CAP. CAP does derive `EntitySetPath` for
-                               * entity-returning bound operations by itself.
+                               * `IsComposable="true"` in the reference model, always `false` in
+                               * CAP (§4.1). `EntitySetPath` is derived automatically, though.
                                */
                               function AvailableCopies()                   returns array of Copies;
 
@@ -83,7 +83,8 @@ service Service @(path: '/odata/v4/library') {
 
   /**
    * Reference model: reachable only via containment from `Audiobook`, with no entity set of its
-   * own. CAP has no containment (GAP G8), so the set has to be exposed to be usable at all.
+   * own. CAP expresses "part of" with compositions rather than containment, so the target needs
+   * its own entity set - FEATURE-COVERAGE.md §1.2.
    */
   entity AudiobookChapters as projection on Catalog.AudiobookChapter;
 
@@ -120,8 +121,8 @@ service Service @(path: '/odata/v4/library') {
 
   /**
    * `Copy.Condition` carries `@odata.etag`, so this set participates in optimistic concurrency
-   * (If-Match / 412). Note that CAP emits `Core.OptimisticConcurrency` with an *empty* collection
-   * instead of listing `Condition` - see GAP G7.
+   * (If-Match / 412), and does so correctly. Note only that CAP emits `Core.OptimisticConcurrency`
+   * with an *empty* collection instead of naming `Condition` - see FEATURE-COVERAGE.md §2.5.
    */
   entity Copies            as projection on Circulation.Copy actions {
                               /** The no-return-type case for a *bound* action. */
@@ -181,16 +182,16 @@ service Service @(path: '/odata/v4/library') {
   function StatsPerBranch()                               returns array of Circulation.BranchStats;
 
   /**
-   * Reference model: returns the abstract `Medium`. Typed as `Books` here as the representative
-   * concrete type - GAP G2.
+   * Reference model: returns the abstract `Medium`. With no abstract type to return, this is typed
+   * as `Books` - the representative concrete type. FEATURE-COVERAGE.md §1.1.
    */
   function MostReadMedium()                               returns Books;
 
-  /** GAP G5: `IsComposable="true"` in the reference model, always `false` in CAP. */
+  /** FEATURE-COVERAGE.md §4.1: `IsComposable="true"` in the reference model, always `false` in CAP. */
   function NewReleases()                                  returns array of Books;
 
   /**
-   * GAP G4: the reference model declares *two* overloads (`Term`, and `Term` + `MaxResults`).
+   * FEATURE-COVERAGE.md §4.1: the reference model declares *two* overloads (`Term`, and `Term` + `MaxResults`).
    * CDS cannot declare the same operation name twice, so only the richer signature exists;
    * `MaxResults` is optional at runtime.
    */

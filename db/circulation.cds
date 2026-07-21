@@ -49,7 +49,7 @@ entity Member {
       Name              : String(100) not null;
       DateOfBirth       : Date;
 
-      /** GAP G1: flattened to Address_Street, Address_City, Address_PostalCode, Address_Country. */
+      /** Flattened to Address_Street/City/PostalCode/Country - FEATURE-COVERAGE.md §2.1. */
       Address           : Catalog.PostalAddress;
 
       /** Collection of a complex type - this one *does* produce a real `<ComplexType>`. */
@@ -69,16 +69,20 @@ entity Member {
 /**
  * Composite key (MediumId + InventoryNumber) as in the reference model.
  *
- * GAP G2 consequence: `MediumId` stays a bare Guid instead of a managed association to the
- * abstract `Medium` type - CAP cannot model an association whose target is an abstract base
- * type covering all seven media entities. The media entities carry an unmanaged `Copies`
- * backlink over this column instead (see catalog.cds), so `$expand=Copies` still works.
+ * Follows from the aspect-based media hierarchy (FEATURE-COVERAGE.md §1.1): with no abstract base
+ * type to point at, `MediumId` stays a bare Guid rather than a managed association. The media
+ * entities carry an unmanaged `Copies` backlink over this column instead (see catalog.cds), so
+ * `$expand=Copies` still works on all seven of them.
  */
 entity Copy {
   key MediumId        : UUID;
   key InventoryNumber : Integer;
 
-      /** Reference model annotates the Copies set with Core.OptimisticConcurrency on Condition. */
+      /**
+       * Reference model annotates the Copies set with Core.OptimisticConcurrency on Condition.
+       * CAP's ETag handling is fully correct at runtime; only the emitted annotation is empty
+       * rather than naming this property - FEATURE-COVERAGE.md §2.5.
+       */
       @odata.etag
       Condition       : UInt8;
 
@@ -86,14 +90,18 @@ entity Copy {
       Status          : Catalog.AvailabilityStatus;
       AcquisitionDate : Date;
 
-      /** GAP: CDS has no single-precision float; metadata is overridden, storage stays double. */
+      /**
+       * CDS has no single-precision float. The type override declares `Edm.Single` while storage
+       * stays `Double`; values must be kept in single range to stay conformant - a complete
+       * workaround, see FEATURE-COVERAGE.md §3.2.
+       */
       @odata.Type   : 'Edm.Single'
       WeightKg        : Double;
 
       /**
        * Trailing underscore deliberately collides with the `Location` navigation property under a
        * client renaming strategy (odata2ts#142).
-       * GAP G12: `@odata.Unicode` is ignored by CAP - no `Unicode="false"` facet is emitted.
+       * FEATURE-COVERAGE.md §2.5: `@odata.Unicode` is ignored by CAP - no `Unicode="false"` facet is emitted.
        */
       @odata.Unicode: false
       Location_       : String(10);
@@ -143,7 +151,11 @@ entity Branch {
       Name            : String(100) not null;
       Address         : Catalog.PostalAddress;
 
-      /** GAP: CDS has no spatial types - metadata is overridden, values are WKT strings. */
+      /**
+       * CDS has no spatial types. The override puts the correct type and SRID in `$metadata`, but
+       * the values stay WKT strings where OData expects GeoJSON - a cosmetic workaround only,
+       * see FEATURE-COVERAGE.md §3.3.
+       */
       @odata: {
         Type: 'Edm.GeographyPoint',
         SRID: 4326
@@ -156,7 +168,7 @@ entity Branch {
       }
       CatchmentArea   : String;
 
-      /** GAP: CDS has no signed 8-bit integer. */
+      /** CDS has no signed 8-bit integer; override + value range keeps it conformant (§3.2). */
       @odata.Type: 'Edm.SByte'
       LowestFloor     : Int16;
 

@@ -12,28 +12,33 @@ The reference model lives outside this repo, alongside it in the odata2ts worksp
 
 - `odata-test-data-model-library.md` - concept, design decisions, feature → location mapping
 - `odata-test-data-model-library.xml` - the reference EDMX (OData **4.01**, 100 % CSDL-conformant)
-- `odata-test-data-model-quirks.xml` - a separate, deliberately non-conformant fixture (not
-  implemented here, see below)
 
-This repo answers one question: **how much of that model can CAP express, and where does it break?**
+That model is a deliberately feature-dense probe of the OData spec, not a benchmark. An OData server
+does not have to implement all of OData, and a framework may well solve a modelling problem its own
+way. So this repo asks two questions, not one:
 
-The answer is in **[FEATURE-COVERAGE.md](FEATURE-COVERAGE.md)** - the actual deliverable. It is based
+1. How much of the model can CAP express?
+2. Where CAP does something else - **is that a gap, or a different design?**
+
+The answer is in **[FEATURE-COVERAGE.md](FEATURE-COVERAGE.md)**, the actual deliverable. It is based
 on the compiled `$metadata` and on requests against the running service, not on documentation.
 
-Short version: the runtime surface is reproduced almost completely (all 29 operations work, as do
-streams, `$batch`, deep insert, ETags and `$apply`), while a large part of the type system is not -
-CAP has no EDM inheritance, no `<EnumType>`, no `<ComplexType>` for singular structured elements, no
-containment, and only one schema per service.
+Short version: the protocol and operation surface is reproduced essentially completely - all 29
+operations, `$batch`, deep insert, ETags, streams, `$apply`. Most structural divergence is by
+design: CAP replaces inheritance with **aspects/mixins** (`abstract entity` is deprecated in CDS),
+containment with **compositions**, and enum types with **value constraints**. The genuine gaps are
+narrower and cluster around spatial types, flags enums, operation overloads, alternate-key
+addressing, and a few places where the metadata under- or misstates actual runtime behaviour.
 
-## Deliberately broken
+## Deliberately kept failing
 
-Where an operation fails because of a CAP limitation rather than a coding mistake, it is **kept**, so
-the failure stays visible. `test/requests.http` has a dedicated section for these, and each is
-cross-referenced to a gap ID in `FEATURE-COVERAGE.md`. Examples:
+Where a request fails because of a CAP limitation, it is **kept**, so the failure stays visible.
+`test/requests.http` has a dedicated section for these, cross-referenced to
+`FEATURE-COVERAGE.md`. Examples:
 
 - `GET /Books(ISBN='…')` → 400 - `@Core.AlternateKeys` is in the metadata but the runtime ignores it
-- `GET /Members(1)?$select=Address/City` → 400 - complex types are flattened away
-- `GET /Branches?$filter=Amenities has 2` → 400 - no flags enum without `<EnumType>`
+- `GET /Members(1)?$select=Address/City` → 400 - structured elements are flattened by default
+- `GET /Branches?$filter=Amenities has 2` → 400 - no flags enum, so no `has` operator
 - `Branch.Location` is declared `Edm.GeographyPoint` but delivers a WKT string
 
 ## Getting started
@@ -70,10 +75,15 @@ Other scripts: `npm run metadata` (write the EDMX to `gen/edmx/` for diffing aga
 
 Notes worth knowing before editing:
 
-- Bound operations **must** be declared on the service entity. `as projection on` silently drops
-  `actions {}` blocks declared in the db layer.
+- Bound operations **must** be declared on the service entity. `as projection on` does not carry
+  `actions {}` blocks up from the db layer.
 - The file dependency order is `common` ← `circulation` ← `catalog`; backlink associations are added
   via `extend` in `catalog.cds` to keep the graph acyclic.
+- The media hierarchy uses **aspects**, following CAP's table-per-leaf-class approach. This is the
+  framework's intended pattern, not a workaround - see §1.1 of `FEATURE-COVERAGE.md`.
+- The service runs in CAP's default **flat** mode. Setting `CDS_ODATA_STRUCTS=true` switches the
+  metadata to real complex types and enables `$select`/`$filter` into them, but the JSON payload
+  stays flat - metadata and payload then disagree. §2.1 documents the trade-off.
 
 ## Conventions
 
@@ -83,10 +93,3 @@ itself a valid commit message, MIT licensed.
 
 Deviation: this repo uses **npm** rather than Yarn 4 - the cds tooling scaffolds and tests against
 npm, and this is a standalone server, not part of a workspace.
-
-## Not implemented
-
-The quirks fixture (`odata-test-data-model-quirks.xml`: property names with spaces or slashes, an
-`EnumType` with no members) is out of scope. Those constructs are intentionally CSDL-invalid; the CDS
-compiler will not emit them, and forcing them through would require post-processing the generated
-EDMX - which would tell us nothing about CAP.

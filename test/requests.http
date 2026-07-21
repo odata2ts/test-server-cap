@@ -69,10 +69,10 @@ GET {{host}}/Loans({{openLoan}})?$select=ReturnedAt
 # Exotic data types
 ###############################################################################
 
-### 200 - Edm.Geography*/Edm.Geometry* in $metadata, WKT strings on the wire (GAP G13)
+### 200 - Edm.Geography*/Edm.Geometry* in $metadata, WKT strings on the wire (FEATURE-COVERAGE.md §3.3)
 GET {{host}}/Branches(1)?$select=Location,CatchmentArea,FloorPlanOrigin,FloorPlanShapes
 
-### 200 - Edm.Untyped declared, plain JSON string delivered (GAP G13/G10)
+### 200 - Edm.Untyped declared, plain JSON string delivered (FEATURE-COVERAGE.md §3.3/3.4)
 GET {{host}}/CollectorsItems({{collectorsItem}})?$select=ExtraData
 
 ### 200 - Edm.Duration declared, ISO 8601 string delivered
@@ -129,7 +129,7 @@ GET {{host}}/NewReleases()
 GET {{host}}/Search(Term='Der',MaxResults=2)
 
 ### 200 - MaxResults omitted; the reference model's separate 1-parameter overload
-### does not exist here (GAP G4)
+### does not exist here (FEATURE-COVERAGE.md §4.1)
 GET {{host}}/Search(Term='Der')
 
 ###############################################################################
@@ -182,7 +182,7 @@ Content-Type: application/json
 # Bound operations
 #
 # Declared once per concrete media type instead of once on the abstract Medium
-# (GAP G2) - swap `Books` for Magazines/TradeJournals/Audiobooks/DVDs/EBooks/
+# (FEATURE-COVERAGE.md §1.1) - swap `Books` for Magazines/TradeJournals/Audiobooks/DVDs/EBooks/
 # CollectorsItems to reach the other bindings.
 ###############################################################################
 
@@ -192,7 +192,7 @@ GET {{host}}/Books({{book}})/Library.Service.LoanMetrics()
 ### 200 - single entity; CAP derives EntitySetPath="in"
 GET {{host}}/Books({{book}})/Library.Service.AvailableCopy()
 
-### 200 - Collection(entity); IsComposable is false here, unlike the reference model (GAP G5)
+### 200 - Collection(entity); IsComposable is false here, unlike the reference model (FEATURE-COVERAGE.md §4.1)
 GET {{host}}/Books({{book}})/Library.Service.AvailableCopies()
 
 ### 200 - bound to the *collection*
@@ -286,7 +286,7 @@ Content-Type: application/json
 {"Title":"Bind Probe","Publisher@odata.bind":"Publishers(1)"}
 
 ### 201 - an @odata.type discriminator is accepted but has no effect: without
-### inheritance (GAP G2) there is no subtype to select (odata2ts#257)
+### inheritance (FEATURE-COVERAGE.md §1.1) there is no subtype to select (odata2ts#257)
 POST {{host}}/Books
 Content-Type: application/json
 
@@ -320,19 +320,19 @@ GET Books?$top=1 HTTP/1.1
 # (see FEATURE-COVERAGE.md for the matching gap IDs)
 ###############################################################################
 
-### 400 - GAP G1: `Address` is flattened to Address_Street/Address_City/...,
+### 400 - FEATURE-COVERAGE.md §2.1: `Address` is flattened to Address_Street/Address_City/...,
 ### so the complex property does not exist under that name.
 GET {{host}}/Members(1)?$select=Address
 
-### 400 - GAP G1: consequently no deep $select into a complex type either
+### 400 - FEATURE-COVERAGE.md §2.1: consequently no deep $select into a complex type either
 ### (odata2ts#391/#393)
 GET {{host}}/Members(1)?$select=Address/City
 
-### 400 - GAP G6: `@Core.AlternateKeys` is in $metadata, but the runtime
+### 400 - FEATURE-COVERAGE.md §4.2: `@Core.AlternateKeys` is in $metadata, but the runtime
 ### does not resolve alternate-key addressing
 GET {{host}}/Books(ISBN='9783150094440')
 
-### 400 - GAP G7: no EnumType means no IsFlags and no `has` operator
+### 400 - FEATURE-COVERAGE.md §1.3: no EnumType means no IsFlags and no `has` operator
 GET {{host}}/Branches?$filter=Amenities has 2
 
 ### 501 Not Implemented - cast() in $filter (odata2ts#323)
