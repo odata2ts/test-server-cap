@@ -2,7 +2,7 @@
  * Namespace `PublisherRegistry` - a standalone namespace without the `Library.` prefix,
  * simulating an external system.
  *
- * GAP G3: the reference model deliberately declares a second type named `Branch` here, distinct
+ * FEATURE-COVERAGE.md §1.4: the reference model deliberately declares a second type named `Branch` here, distinct
  * from `Library.Circulation.Branch`. CAP renders *one* flat EDM schema per service, so both would
  * collide on the entity type name. The type is therefore called `PublisherBranch` here.
  *
@@ -18,7 +18,7 @@ entity Publisher {
       Founded : Date;
 }
 
-/** Reference model: `PublisherRegistry.Branch` - renamed, see GAP G3 above. */
+/** Reference model: `PublisherRegistry.Branch` - renamed, see FEATURE-COVERAGE.md §1.4 above. */
 entity PublisherBranch {
   key Id      : Integer;
       City    : String(80);

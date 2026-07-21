@@ -1,242 +1,350 @@
-# CAP coverage of the "Library" OData V4 test model
+# CAP and the "Library" OData V4 test model
 
-What SAP CAP (Node.js) can and cannot reproduce from
-[`odata-test-data-model-library.xml`](../../odata-test-data-model-library.xml), the 100 % CSDL-conformant
-OData **V4.01** reference model.
+How far SAP CAP (Node.js) can reproduce
+[`odata-test-data-model-library.xml`](../../odata-test-data-model-library.xml), and — more
+interestingly — **where it deliberately does something else**.
 
 Measured against **@sap/cds 10.0.3** / **@sap/cds-dk 10.0.5**, Node 26, `@cap-js/sqlite` 3.
-Every verdict below was verified against the compiled `$metadata` and against the running service -
-none of it is inferred from documentation.
+Every statement below was verified against the compiled `$metadata` and against the running service.
 
-Legend: ✅ reproduced · 🔶 partially / via workaround · ❌ not reproducible
+## How to read this document
+
+The reference model is a deliberately feature-dense construct: it exists to probe the outer edges of
+the OData V4/4.01 specification, and it packs features together in combinations no real domain would
+produce. It is a **probe, not a benchmark**, and it carries its own authors' assumptions about what
+matters. A model like that is bound to over-weight parts of the spec that a given framework has good
+reasons to leave alone.
+
+And an OData server does not have to implement all of OData. The spec is large, much of it is
+optional, and conformance levels exist precisely because implementations are expected to pick.
+"CAP does not do X" is therefore only interesting once we know **whether CAP solves the same problem
+differently**.
+
+So this document is ordered accordingly:
+
+1. **[CAP's own approach](#1-caps-own-approach)** — the design decisions that make parts of the
+   reference model inapplicable rather than unsupported
+2. **[Structural deviations](#2-structural-deviations)** — where CAP's EDM differs in shape
+3. **[Data types](#3-data-types)** — which EDM types have no CDS counterpart, and what a workaround
+   actually buys
+4. **[Operations and protocol](#4-operations-and-protocol)** — the part that maps almost cleanly
+5. **[Overview](#5-overview)** — the feature-by-feature verdict
 
 ---
 
-## Summary
+## 1. CAP's own approach
 
-CAP reproduces the **runtime surface** of the model remarkably well: all 29 operations of the
-reference model exist and are callable, every return-type and parameter-type combination works,
-streams, `$batch`, deep insert, ETags and `$apply` all behave.
+CAP is not an OData framework that happens to have a modelling language. It is a domain-modelling
+framework that emits OData as **one of several projections** of the domain model. capire calls these
+projections _reflections_, and says outright that they involve
+"some loss of information" — SQL DDL reflects persistence, OData EDMX reflects the service interface,
+GraphQL reflects a further-reduced interface. The domain model is intentionally richer than any of
+them.
 
-What it cannot reproduce is a large part of the **type system**: EDM inheritance, `<EnumType>`,
-`<ComplexType>` for singular structured elements, `<TypeDefinition>`, containment, and multiple
-schemas. CAP's EDM is deliberately flat, and there is no annotation or config flag to change that -
-the two historical escape hatches (`cds.odata.structs`, `cds.odata.containment`) are inert in cds 10.
+That single premise explains most of what follows.
 
-The one outright **spec violation** found: CAP emits `Edm.Untyped` - a 4.01-only type - inside a
-document declared `Version="4.0"` (G10).
+### 1.1 Aspects instead of inheritance
 
----
+The reference model's centrepiece is a four-level entity hierarchy
+(`Medium` → `PrintMedium` → `Magazine` → `TradeJournal`) with abstract bases and a single entity set
+over the abstract root.
 
-## Gaps
+CDS has no entity inheritance, and this is a decision, not an omission. capire is explicit on all
+three points:
 
-### G1 - No `<ComplexType>` for singular structured elements ❌
+- On the `:` include syntax: _"Looks Like Inheritance … The `:` based syntax for includes looks very
+  much like (multiple) inheritance and in fact has very much the same effects. Yet, it is not based
+  on inheritance but on **mixins**, which are more powerful."_ Mixins avoid the diamond problem while
+  giving multiple-inheritance-like reuse.
+- On class hierarchies: CDS _"intentionally doesn't provide any automatic mapping"_ of class
+  hierarchies to relational schemas. The modeller picks table-per-leaf-class, table-per-class or
+  single-table explicitly.
+- On abstract types: **`abstract entity` is deprecated**, explicitly _"to encourage the use of the
+  Separate Reuse Aspects pattern instead"_.
 
-The reference model uses complex types throughout (`Address`/`PostalAddress`, `ConditionReport`,
-`MediumStats`, `OverdueNotice`, …). CAP **flattens** a structured element into individual columns:
-`Member.Address` becomes `Address_Street`, `Address_City`, `Address_PostalCode`, `Address_Country`.
+This is composition-over-inheritance applied to data modelling, and it is aspect-oriented in the
+literal sense: aspects exist so that secondary concerns (audit fields, UI annotations, extensibility)
+can be layered onto a definition from elsewhere, keeping the core domain model _"concise and
+comprehensible"_.
 
-Consequences, all observable:
+**What this server does:** `Medium`, `PrintMedium`, `MagazineLike` and `AudioMedium` are aspects
+([db/catalog.cds](db/catalog.cds)); the seven concrete media are entities that mix them in. The
+element structure of the reference model is reproduced exactly. What is absent is the _type
+relationship_ between them.
 
-- `GET /Members(1)?$select=Address` → **400**, the property does not exist under that name
-- `GET /Members(1)?$select=Address/City` → **400**, so the deep-`$select`-into-complex-type scenario
-  (odata2ts#391/#393) cannot be tested against this server at all
+**What follows from it — and is therefore not a defect:**
 
-Complex types _are_ emitted where the type appears as a **collection** or as an **operation
-parameter / return type**. Six `<ComplexType>` elements exist in the generated metadata
-(`Library_Catalog_PostalAddress`, `Library_Circulation_LoanStats`, `…_DateRange`, `…_BranchStats`,
-`…_AnnualReport`, `…_OverdueNotice`), reachable via `Member.PreviousAddresses`, `LoanStatistics`,
-`StatsPerBranch`, `YearEndClosing` and `NoticeHistory`. Note the namespace-mangled names.
+| Reference model feature                                | Why it does not apply                                                   |
+| ------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `Abstract="true"` entity types                         | Nothing to be abstract over; the pattern is deprecated in CDS           |
+| `BaseType=`                                            | Mixins leave no base type behind                                        |
+| Entity set over an abstract root                       | Each concrete type gets its own set — the table-per-leaf-class strategy |
+| Type-cast path segments (`Media/Library.Catalog.Book`) | No subtype to cast to                                                   |
+| `@odata.type` discriminators on write                  | Nothing to discriminate; accepted and ignored                           |
+| `cast()` in `$filter` over the hierarchy               | Same                                                                    |
 
-`cds.odata.structs` is accepted on the command line but has **no effect** - verified with
-`cds compile srv --to edmx --odata-structs=true`, which produces byte-identical output. The
-capire docs mark it deprecated and "likely to be removed with the next major release"; in cds 10 it
-evidently is.
+The trade is real and worth naming: you gain a flat, queryable, relationally honest schema; you lose
+polymorphic access ("give me all media regardless of kind"). For a library domain that would hurt.
+The reference model happens to want exactly the thing CAP gave up.
 
-### G2 - No EDM inheritance, no abstract entity types ❌
+One incidental effect: because media-bound operations are declared per concrete type, the metadata
+ends up with **seven bindings** of `AvailableCopies` and `AvailableCopy` — which is, structurally,
+the reference model's "overload on the binding-type axis" case.
 
-The single most consequential gap. The reference model builds a four-level chain
-(`Medium` → `PrintMedium` → `Magazine` → `TradeJournal`), a second branch
-(`Medium` → `AudioMedium` → `Audiobook`/`DVD`), plus `Address` → `PostalAddress` on the complex-type
-side, and exposes **one** entity set `Media` over the abstract root.
+### 1.2 Compositions instead of containment
 
-CDS aspects are a _mixin_: including an aspect copies its elements. The generated metadata contains
-**zero** `BaseType=` and **zero** `Abstract=` attributes.
+The reference model marks `Audiobook.Chapters` `ContainsTarget="true"`, so chapters exist only inside
+their audiobook.
 
-This server therefore models the hierarchy with aspects (`Medium`, `PrintMedium`, `MagazineLike`,
-`AudioMedium` in [db/catalog.cds](db/catalog.cds)) and exposes **seven** entity sets - `Books`,
-`Magazines`, `TradeJournals`, `Audiobooks`, `DVDs`, `EBooks`, `CollectorsItems` - instead of one.
-The element structure is faithful; the type relationships are gone.
+CAP expresses the same intent with **compositions**, its modelling primitive for
+document structures: a composition means "part of", implies cascading delete, and drives deep insert
+and deep update. CAP emits no `ContainsTarget` and exposes the target as a regular entity set.
 
-Knock-on effects:
-
-| Reference model feature                                      | Status here                              |
-| ------------------------------------------------------------ | ---------------------------------------- |
-| Entity set `Media` over the abstract base                    | ❌ seven concrete sets instead           |
-| Type-cast path segments (`Media/Library.Catalog.Book`)       | ❌ nothing to cast between               |
-| `@odata.type` discriminator in write payloads (odata2ts#257) | 🔶 accepted, but selects nothing         |
-| `cast()` in `$filter` over the hierarchy (odata2ts#323)      | ❌ **501 Not Implemented**               |
-| Operations bound to / returning `Medium`                     | 🔶 repeated per concrete type, see below |
-| `Copy.Medium` association + its `<ReferentialConstraint>`    | 🔶 replaced by a plain `MediumId` Guid   |
-
-The `Copy` → medium link deserves a note: since no association can target the abstract base,
-`Copy.MediumId` stays a bare Guid and each medium entity carries an **unmanaged backlink**
-(`Copies : Association to many Copy on Copies.MediumId = Id`). `$expand=Copies` therefore works on
-all seven sets, but the reference model's referential constraint on that relationship does not exist.
-(Referential constraints as such are covered - 9 of them are emitted, e.g. `Loan` → `Copy` over the
-composite key.)
-
-An unintended benefit: because the media-bound operations are declared once per concrete type, the
-metadata ends up with **seven bindings** of `AvailableCopies` - which happens to reproduce the
-reference model's "overload on the binding-type axis" test case, just not for the reason intended.
-
-### G3 - One flat schema per service ❌
-
-The reference model uses four namespaces (`Library.Catalog`, `Library.Circulation`,
-`PublisherRegistry`, `Library.Service`) and deliberately declares **two different types named
-`Branch`** in two of them (odata2ts#222).
-
-CAP emits exactly one `<Schema>` per service. Everything lands in `Library.Service`, so the name
-collision is unrepresentable - `PublisherRegistry.Branch` had to be renamed `PublisherBranch`
-([db/publishers.cds](db/publishers.cds)). Cross-namespace operation binding likewise evaporates:
-there is only one namespace to bind within.
-
-### G4 - No operation overloads ❌
-
-The reference model declares `Search` twice (parameter axis) and `AvailableCopies` twice (binding-type
-axis). CDS rejects a duplicate operation name at compile time.
-
-Resolution: only the richer `Search(Term, MaxResults)` signature exists, with `MaxResults` optional at
-runtime. Both `GET /Search(Term='Der')` and `GET /Search(Term='Der',MaxResults=2)` return 200, but
-`$metadata` advertises a single `<Function>`. Leaving the duplicate in would be a compile error - a
-programming error rather than an interesting one - so it was removed rather than kept.
-
-### G5 - `IsComposable` is always `false` ❌
-
-`NewReleases` and both `AvailableCopies` overloads are `IsComposable="true"` in the reference model.
-CAP hardcodes `IsComposable="false"` on every `<Function>`; no annotation changes it.
-
-Interestingly `GET /NewReleases()?$top=1` still returns 200 - CAP applies the query option even
-though its metadata says it may not (odata2ts#346). Metadata and behaviour disagree.
-
-### G6 - Alternate keys are advertised but not resolved 🔶
-
-`@Core.AlternateKeys` renders **correctly** into `$metadata` (six occurrences, on the three print-media
-sets). The runtime ignores it: `GET /Books(ISBN='9783150094440')` → **400**.
-
-Kept deliberately - it is the clearest example in this server of metadata promising something the
-runtime does not deliver.
-
-### G7 - No `<EnumType>`, therefore no `IsFlags` and no `has` ❌
-
-`AvailabilityStatus` (underlying type `Edm.Byte`) and the `IsFlags` enum `Amenities` both render as
-their **underlying primitive** plus a `Validation.AllowedValues` annotation listing the symbolic
-names. Zero `<EnumType>` elements are emitted.
-
-- `GET /Copies?$filter=Status eq 1` → 200 (works, but as a plain integer comparison)
-- `GET /Branches?$filter=Amenities has 2` → **400**, no `has` operator without a flags enum
-
-The non-ASCII member name `Café` survives (escaped `![Café]` in CDL) and appears in the annotation;
-the non-power-of-two combined member `FullService = 31` survives as a value but means nothing without
-`IsFlags`.
-
-Related: `@odata.etag` on `Copy.Condition` produces `Core.OptimisticConcurrency` with an **empty**
-`<Collection/>` rather than listing `Condition` as a `PropertyPath`. The runtime behaviour is
-nonetheless correct (see "What works" below) - only the annotation content is wrong.
-
-### G8 - No containment ❌
-
-`Audiobook.Chapters` is `ContainsTarget="true"` in the reference model, and `AudiobookChapter` has no
-entity set of its own. CAP emits **zero** `ContainsTarget` attributes and requires the target to be
-exposed as a regular entity set.
-
-Verified that this is not a configuration matter: compiling with `--odata-containment=true`, both with
-an unmanaged composition and with a managed composition-of-aspect, changes nothing.
-
-Navigation itself works - `GET /Audiobooks(<id>)/Chapters` returns 200 - it is simply not containment.
-
-### G9 - Media entities vs. stream properties 🔶
-
-The reference model marks `EBook` and `AudiobookChapter` with `HasStream="true"` (the entity _is_ the
-stream) and gives `Audiobook` a _named_ stream property `Sample`.
-
-CAP has no `HasStream`: **zero** occurrences in the metadata. It models streams only as properties -
-`@Core.MediaType` on a `LargeBinary` yields `Edm.Stream` (three of them here).
-
-The runtime behaviour is good: upload and download work for both shapes.
+Behaviourally the important half is there:
 
 ```
-PUT /EBooks(<id>)/content        -> 204
-GET /EBooks(<id>)/content        -> 200
-PUT /Audiobooks(<id>)/Sample     -> 204
-GET /Audiobooks(<id>)/Sample     -> 200
+POST /Audiobooks  {"Title":"…","Chapters":[{"Id":1,"Title":"Kapitel A"}]}   -> 201, deep insert
+GET  /Audiobooks(<id>)/Chapters                                             -> 200
+DELETE the audiobook                                                        -> chapters go too
 ```
 
-So the _named stream property_ case is fully reproduced; only the _media entity_ case is not.
+What is missing is the _addressing_ guarantee — chapters are also reachable directly at
+`/AudiobookChapters`. Verified that this is not a configuration matter: `cds.odata.containment` has
+no effect in cds 10, with either an unmanaged composition or a managed composition-of-aspect.
 
-### G10 - OData 4.01 constructs in a 4.0 document ❌
+### 1.3 Enums as constraints, not as types
 
-The reference model is `Version="4.01"`, which `Edm.Untyped` requires. CAP always emits
-`Version="4.0"` - yet happily renders `Edm.Untyped` when asked to via `@odata.Type`.
+`AvailabilityStatus` and the `IsFlags` enum `Amenities` render as their **underlying primitive**
+plus a `Validation.AllowedValues` annotation carrying the symbolic names. No `<EnumType>` is emitted.
 
-The result is a **self-inconsistent metadata document**: a 4.01-only type declared inside a document
-claiming 4.0 conformance. This is the one place where CAP produces something a strict client may
-legitimately reject. Kept deliberately, since exposing exactly this kind of thing is the point of the
-model.
+This fits the reflection idea: in CDS an enum is a _constraint on a value_, enforced via
+`@assert.range`, not a distinct type in the type system. The vocabulary annotation preserves the
+symbolic names for any client that cares to read them.
 
-### G11 - `<TypeDefinition>` is inlined ❌
+The cost is concrete and lands in the "real gap" column, because it removes query capability rather
+than just renaming things: without a flags enum there is no `has` operator
+(`$filter=Amenities has 2` → 400). The non-ASCII member `Café` and the non-power-of-two member
+`FullService = 31` both survive as values.
 
-`type ISBN : String(13)` does not survive as `<TypeDefinition Name="ISBN" UnderlyingType="Edm.String"
-MaxLength="13"/>`. CAP inlines it: the property renders as `Edm.String` with `MaxLength="13"`.
-Zero `<TypeDefinition>` elements are emitted.
+### 1.4 One service, one schema
 
-### G12 - The `Unicode` facet is dropped ❌
+The reference model uses four namespaces and deliberately declares two different types named
+`Branch`. CAP emits one `<Schema>` per service, named after the service.
 
-`@odata.Unicode: false` on `Copy.Location_` is silently ignored - zero `Unicode=` attributes in the
-output, where the reference model has `Unicode="false"`.
+This is a coherent position — a service is the unit of API design, and one namespace per service
+keeps client-side name resolution trivial — but it does mean the duplicate type name is
+unrepresentable. `PublisherRegistry.Branch` is called `PublisherBranch` here
+([db/publishers.cds](db/publishers.cds)). Cross-namespace operation binding dissolves for the same
+reason: there is only one namespace.
 
-The property name itself is preserved, so the intended trailing-underscore collision with the
-`Location` navigation property (odata2ts#142) is still testable.
+### 1.5 Where CAP simply follows the spec
 
-### G13 - Exotic types: metadata only, no runtime typing 🔶
+Worth stating explicitly, because it is easy to lose in a gap list. These are spec features CAP
+implements as written, several of which the reference model treats as exotic:
 
-CAP has no CDS types for the spatial family, `Edm.Duration`, `Edm.SByte`, `Edm.Single` or
-`Edm.Untyped`. All of these are declared via the documented `@odata: { Type: …, SRID: … }` override,
-which places the **correct type and SRID in `$metadata`** (6 × `Edm.Geography*`, 4 × `Edm.Geometry*`,
-10 × `SRID=`, 1 × `Edm.Untyped`) while the underlying storage stays `String`/`Double`/`Int16`.
+**Open types** — yes, fully. `@open` on an entity yields `OpenType="true"`, and undeclared
+properties pass through. `CollectorsItem` uses it.
 
-CAP performs **no conversion** - the values go out as whatever the column holds:
-
-| Property                   | `$metadata` says                | Wire format actually delivered                 |
-| -------------------------- | ------------------------------- | ---------------------------------------------- |
-| `Branch.Location`          | `Edm.GeographyPoint` SRID 4326  | `"POINT (9.9937 53.5511)"` (WKT string)        |
-| `Branch.FloorPlanShapes`   | `Edm.GeometryCollection` SRID 0 | WKT string                                     |
-| `Audiobook.Duration`       | `Edm.Duration`                  | `"PT9H14M"` - happens to be valid              |
-| `CollectorsItem.ExtraData` | `Edm.Untyped`                   | JSON _as a quoted string_, not as a JSON value |
-| `Copy.WeightKg`            | `Edm.Single`                    | JSON number - fine                             |
-| `Branch.LowestFloor`       | `Edm.SByte`                     | JSON number - fine                             |
-
-A conforming client will reject the geography and untyped payloads. This is the intended finding, and
-the reason the model puts these types on peripheral entities: they do not poison the domain core.
-
-### G14 - Decimal is serialised as a string 🔶
-
-Not a reference-model feature, but a notable deviation found while testing. `Loan.LateFee`
-(`Decimal(5,2)`) is delivered as `"LateFee": "4.50"` - a **string** - in entity payloads, while the
-same value returned from the `OutstandingBalance` function comes back as the number `29.5`.
-
-OData JSON delivers `Edm.Decimal` as a number unless the client asks for
-`IEEE754Compatible=true`. CAP does neither consistently.
+Also: singletons (`@odata.singleton`), composite keys, referential constraints (9 emitted, including
+the composite `Loan` → `Copy`), `OnDelete Cascade`, `Collection(primitive)`, `Collection(complex)`,
+`DefaultValue`, `Core.Computed`, `Capabilities.SearchRestrictions` (honoured — `$search` works),
+`Core.AlternateKeys` (in metadata), the `MaxLength`/`Precision`/`Scale`/`Nullable` facets, `Edm.Binary`
+with `/$value`, unidirectional navigation, and `NavigationPropertyBinding` for every target.
 
 ---
 
-## What works
+## 2. Structural deviations
 
-Everything below was verified against the running service.
+Distinct from §1: these are places where CAP models the _same_ concept as OData, but shapes the EDM
+differently.
 
-### Operations - complete ✅
+### 2.1 Structured elements are flattened — by default
 
-All 29 operations of the reference model exist and return correctly shaped payloads. The full
+`Member.Address` (type `PostalAddress`) becomes four properties: `Address_Street`, `Address_City`,
+`Address_PostalCode`, `Address_Country`. No `<ComplexType>` is used for it.
+
+The reason is the relational projection. A CDS entity maps to a table; a structured element has no
+table representation, so it unfolds into columns, and the OData reflection inherits that shape.
+capire recommends it directly: _"Although CAP supports structured types and elements, we recommend
+using them only if they bring real benefit. In general, you should keep your models as flat as
+possible."_
+
+Complex types are **not** absent from the metadata — eight are emitted, wherever the type appears in
+a position that has no column equivalent:
+
+`Library_Catalog_PostalAddress` · `Library_Catalog_MediumStats` · `Library_Catalog_ConditionReport` ·
+`Library_Circulation_OverdueNotice` · `Library_Circulation_LoanStats` · `Library_Circulation_DateRange` ·
+`Library_Circulation_BranchStats` · `Library_Circulation_AnnualReport`
+
+That is: as a **collection** (`Member.PreviousAddresses`) and as operation **parameters and return
+types**. Note the namespace-mangled names.
+
+**Structured mode is available, and its trade-off is precise.** Setting `cds.odata.structs` (or the
+`x4` flavour) changes the metadata substantially — verified:
+
+|                                                      | default (flat)          | `cds.odata.structs`                      |
+| ---------------------------------------------------- | ----------------------- | ---------------------------------------- |
+| `Member.Address` in `$metadata`                      | 4 flat properties       | one `PostalAddress` complex property     |
+| Foreign key properties                               | present                 | gone                                     |
+| `$select=Address`, `$select=Address/City`            | **400**                 | **200**                                  |
+| `$filter=Address/City eq …`, `$orderby=Address/City` | 400                     | **200**                                  |
+| JSON payload                                         | `"Address_Street": "…"` | `"Address_Street": "…"` — **still flat** |
+
+So structured mode buys spec-conformant metadata _and_ spec-conformant query syntax, but the payload
+keeps the flat property names, which then do not exist in the type the metadata declares. Metadata
+and payload disagree — which is presumably why capire marks the setting deprecated and "likely to be
+removed with the next major release".
+
+**This server keeps the default.** Flat metadata plus flat payload is at least self-consistent, and
+it is the path CAP actually recommends. The consequence is that the deep-`$select`-into-complex-type
+scenario returns 400 here.
+
+### 2.2 Foreign keys appear next to navigation properties
+
+For a managed association, CAP emits **three** things where OData needs one:
+
+```xml
+<NavigationProperty Name="Publisher" Type="Library.Service.Publishers" Partner="Books">
+  <ReferentialConstraint Property="Publisher_Id" ReferencedProperty="Id"/>
+</NavigationProperty>
+<Property Name="Publisher_Id" Type="Edm.Int32"/>
+```
+
+The `Publisher_Id` property has no counterpart in the reference model, which exposes only the
+navigation property. It is the flattening rule of §2.1 applied to associations: the association's
+foreign key is a real column, so it surfaces as a real property.
+
+This is additive rather than lossy — navigation still works, and the referential constraint is
+correctly declared — but it does widen every entity type, and a generated client will see key
+properties it has no use for. `cds.odata.refs` is documented as suppressing them; in cds 10 it had no
+effect in isolation, and the FK properties only disappear together with structured mode (§2.1).
+
+Same pattern on `Copy.Location` → `Location_Id`, which sits next to the unrelated string property
+`Location_` from the reference model.
+
+### 2.3 Type definitions are inlined
+
+`type ISBN : String(13)` does not survive as `<TypeDefinition>`. It is resolved at compile time and
+the property renders as `Edm.String MaxLength="13"`.
+
+Consistent with §1's reflection idea — a named alias for a primitive carries no information the
+service interface needs — but it does mean a client cannot recover the domain vocabulary.
+
+### 2.4 Streams are properties, never media entities
+
+The reference model uses both stream shapes OData offers: `EBook` and `AudiobookChapter` are marked
+`HasStream="true"` (the entity _is_ the stream), while `Audiobook.Sample` is a _named_ stream
+property alongside ordinary data.
+
+CAP models only the second shape. `@Core.MediaType` on a `LargeBinary` element yields an
+`Edm.Stream` property; `HasStream` is never emitted. So the named-stream case is reproduced exactly,
+and the media-entity case is re-expressed as a property (`content`) on an otherwise normal entity.
+
+The behaviour is equivalent in practice — both shapes upload and download cleanly:
+
+```
+PUT/GET /EBooks(<id>)/content       -> 204 / 200
+PUT/GET /Audiobooks(<id>)/Sample    -> 204 / 200
+```
+
+What a client loses is the signal that the entity's _own_ representation is a stream, which affects
+how a generated client models the type.
+
+### 2.5 Facets and annotations that do not survive
+
+`@odata.Unicode: false` on `Copy.Location_` is dropped; no `Unicode=` attribute is emitted. Minor,
+and the property name itself is preserved.
+
+`@odata.etag` produces `Core.OptimisticConcurrency` with an **empty** `<Collection/>` rather than
+listing `Condition` as a `PropertyPath`. The runtime behaviour is nonetheless fully correct
+(428 / 200 / 412, see §4.2) — only the annotation content is wrong, so a client reading metadata to
+discover the ETag property learns nothing.
+
+---
+
+## 3. Data types
+
+The reference model instantiates every EDM primitive. That is a demanding bar for any framework:
+no general-purpose type system covers the OData primitives exactly, and CDS types are chosen to map
+cleanly onto SQL column types across HANA, PostgreSQL and SQLite.
+
+The question worth asking is therefore not "how many of the 20 EDM types are present" but **what
+kind of gap each one is**, and what a workaround actually costs.
+
+CAP offers one: `@odata: { Type: 'Edm.…', SRID: … }` overrides the declared type in `$metadata`
+without touching storage. capire is candid about the consequence: _"No automatic data modification
+occurs… You must perform all required modifications so values match their type in the API."_
+
+That splits the missing types into three genuinely different categories.
+
+### 3.1 Directly supported
+
+`Edm.String`, `Edm.Boolean`, `Edm.Guid`, `Edm.Int16/32/64`, `Edm.Byte`, `Edm.Double`, `Edm.Decimal`
+(with precision and scale), `Edm.Date`, `Edm.TimeOfDay`, `Edm.DateTimeOffset`, `Edm.Binary`,
+`Edm.Stream`, and `Collection(…)` of any of them. No workaround needed.
+
+### 3.2 Missing type, workaround is complete
+
+The type has no CDS equivalent, but a serialisation of it fits a CDS type exactly, so a type
+override plus a small amount of handler code produces **fully conformant output**. This is a valid
+workaround, not a compromise.
+
+| EDM type       | Stored as | Handler work needed       | Result     |
+| -------------- | --------- | ------------------------- | ---------- |
+| `Edm.Duration` | `String`  | emit ISO 8601 (`PT9H14M`) | conformant |
+| `Edm.SByte`    | `Int16`   | keep values in −128…127   | conformant |
+| `Edm.Single`   | `Double`  | round to single precision | conformant |
+
+This server does the first (see `isoDuration` in [srv/handlers/shared.ts](srv/handlers/shared.ts));
+the other two are conformant already because the seed values are in range. The cost is that the
+constraint lives in application code rather than in the model, so nothing enforces it.
+
+### 3.3 Missing type, workaround is cosmetic
+
+Here the override puts the right type in `$metadata` but the value on the wire is not a valid
+instance of it. A conforming client will reject these. Making them conformant would mean writing a
+serialiser per type — possible, but that is an application feature, not a framework capability.
+
+| EDM type                                        | `$metadata` declares  | Actually delivered                               |
+| ----------------------------------------------- | --------------------- | ------------------------------------------------ |
+| `Edm.GeographyPoint` / `LineString` / `Polygon` | correct type + `SRID` | `"POINT (9.9937 53.5511)"` — WKT string          |
+| `Edm.GeometryPoint` / `GeometryCollection`      | correct type + `SRID` | WKT string                                       |
+| `Edm.Untyped`                                   | `Edm.Untyped`         | JSON **as a quoted string**, not as a JSON value |
+
+Spatial support is the substantial one: OData expects GeoJSON in payloads and offers
+`geo.distance`/`geo.intersects`/`geo.length` in `$filter`. None of that exists, and none of it can be
+annotated into existence — a real gap, and a defensible one for a framework whose supported databases
+disagree about spatial types.
+
+The reference model puts these types on peripheral entities (`Branch`, `Bookmobile`,
+`CollectorsItem`) precisely so a server that cannot do them stays evaluable. That works here.
+
+### 3.4 A version inconsistency
+
+`Edm.Untyped` is an OData **4.01** type. CAP always declares `Version="4.0"` and yet renders
+`Edm.Untyped` when the override asks for it. The resulting document is not self-consistent, and a
+strict client may reject it. Kept deliberately — it is exactly the kind of thing this model exists to
+surface.
+
+### 3.5 `Edm.Decimal` serialisation
+
+`Loan.LateFee` (`Decimal(5,2)`) is delivered as `"LateFee": "4.50"` — a **string** — in entity
+payloads, while the same type returned from the `OutstandingBalance` function comes back as the
+number `29.5`.
+
+OData JSON delivers `Edm.Decimal` as a number unless the client requests
+`IEEE754Compatible=true`. CAP does neither consistently. Not a reference-model feature, but a real
+spec deviation, and one a generated client will trip over.
+
+---
+
+## 4. Operations and protocol
+
+The part of the reference model that maps almost without friction.
+
+### 4.1 Operations — complete
+
+All 29 operations exist and return correctly shaped payloads. The full
 bound × unbound × return-type matrix is covered:
 
 | Return type             | Unbound                                   | Bound                             |
@@ -249,66 +357,145 @@ bound × unbound × return-type matrix is covered:
 | entity                  | `MostReadMedium`, `AcquireCollectorsItem` | `AvailableCopy`, `Renew`          |
 | `Collection(entity)`    | `NewReleases`, `Search`, `RunStockCheck`  | `AvailableCopies`, `RenewAll`     |
 
-Also working: complex-typed **parameters** (`LoanStatistics(Period=@p1)`, exercising `@p1` aliasing -
-odata2ts#285/#291), collection **parameters** (`CleanUpKeywords`, odata2ts#72), binding to a
-collection (`in : many $self`), and `EntitySetPath` - which CAP derives **automatically** for
-entity-returning bound operations (`Renew`, `RenewAll` both carry `EntitySetPath="in"`).
+Also working: complex-typed **parameters** (`LoanStatistics(Period=@p1)`, exercising `@p1` aliasing),
+collection **parameters**, binding to a collection (`in : many $self`), and `EntitySetPath` — which
+CAP derives **automatically** for entity-returning bound operations.
 
-One caveat: bound operations declared in the **db layer** are silently dropped by `as projection on`.
-They must be declared on the service entity. This cost a compile-clean but empty metadata before it
-was spotted, and is why every `actions {}` block lives in [srv/library-service.cds](srv/library-service.cds).
+Two limits:
 
-### Model features ✅
+- **No overloads.** CDS rejects a duplicate operation name. `Search` exists once, with the richer
+  signature and an optional second parameter; both `Search(Term='Der')` and
+  `Search(Term='Der',MaxResults=2)` work, but `$metadata` advertises one function.
+- **`IsComposable` is always `false`.** No annotation changes it. Curiously
+  `GET /NewReleases()?$top=1` returns 200 anyway — CAP applies the query option its metadata says it
+  will not accept. Behaviour exceeds the declaration.
 
-| Feature                                           | Note                                                                                         |
-| ------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Composite keys                                    | `Copy(MediumId, InventoryNumber)`                                                            |
-| Referential constraints                           | 9 emitted, incl. the composite `Loan` → `Copy`                                               |
-| `OnDelete Cascade`                                | 3 emitted, from CDS compositions                                                             |
-| Singleton                                         | `MainBranch`, `@odata.singleton`                                                             |
-| Open type                                         | `CollectorsItem`, `@open` → `OpenType="true"`                                                |
-| `Collection(primitive)`                           | `Medium.Keywords`                                                                            |
-| `Collection(complex)`                             | `Member.PreviousAddresses` - and the only reason a `PostalAddress` ComplexType exists at all |
-| `DefaultValue`                                    | `Copy.IsLoanable`                                                                            |
-| `Core.Computed`                                   | `Medium.PopularityScore`                                                                     |
-| `Capabilities.SearchRestrictions`                 | honoured - `$search` actually works                                                          |
-| Facets `MaxLength`/`Precision`/`Scale`/`Nullable` | preserved                                                                                    |
-| `Edm.Binary`                                      | `IdDocument.Scan`, incl. `/$value`                                                           |
-| Uni- vs. bidirectional navigation                 | `CollectorsItem.StorageLocation` has no partner                                              |
-| `NavigationPropertyBinding`                       | emitted for every target                                                                     |
+One modelling constraint worth knowing: bound operations must be declared on the **service** entity.
+`as projection on` does not carry `actions {}` blocks up from the db layer.
 
-### Protocol ✅
+### 4.2 Protocol
 
-| Scenario                                                                  | Result                                  |
-| ------------------------------------------------------------------------- | --------------------------------------- |
-| `$filter`, `$orderby`, `$top`, `$skip`, `$count`, `$search`               | 200                                     |
-| `$count` segment (`/Books/$count`)                                        | 200                                     |
-| `$expand`, incl. `$expand=Copies($count=true;$top=1)` (odata2ts#344/#371) | 200                                     |
-| `$apply=groupby((Status),aggregate($count as Count))`                     | 200                                     |
-| 16-value `in()` chain (odata2ts#337)                                      | 200, no recursion limit                 |
-| `$batch`, both JSON and multipart (odata2ts#253)                          | 200                                     |
-| Deep insert (audiobook + chapters in one POST)                            | 201                                     |
-| `@odata.bind`                                                             | 201                                     |
-| ETag round trip: 428 without `If-Match`, 200 with, 412 when stale         | correct                                 |
-| Explicit `null` vs. omitted property (odata2ts#257/#218)                  | `ReturnedAt: null` delivered explicitly |
-| `$expand` on a non-navigation property rejected (odata2ts#372/#379)       | 400 - correct                           |
+| Scenario                                                          | Result                                  |
+| ----------------------------------------------------------------- | --------------------------------------- |
+| `$filter`, `$orderby`, `$top`, `$skip`, `$count`, `$search`       | 200                                     |
+| `$count` segment (`/Books/$count`)                                | 200                                     |
+| `$expand`, incl. `$expand=Copies($count=true;$top=1)`             | 200                                     |
+| `$apply=groupby((Status),aggregate($count as Count))`             | 200                                     |
+| 16-value `in()` chain                                             | 200, no recursion limit                 |
+| `$batch`, both JSON and multipart                                 | 200                                     |
+| Deep insert (audiobook + chapters in one POST)                    | 201                                     |
+| `@odata.bind`                                                     | 201                                     |
+| ETag round trip: 428 without `If-Match`, 200 with, 412 when stale | correct                                 |
+| Explicit `null` vs. omitted property                              | `ReturnedAt: null` delivered explicitly |
+| `$expand` on a non-navigation property rejected                   | 400 — correct                           |
+| Streams: upload and download, media-style and named property      | 204 / 200                               |
 
-The last two rows are **passes**: the server does the right thing.
+Not implemented:
 
-### Additional protocol gaps ❌
+| Scenario                                        | Result                                        |
+| ----------------------------------------------- | --------------------------------------------- |
+| `POST /Books/$query` with `text/plain` body     | 400                                           |
+| `$ref` relationship management                  | 404                                           |
+| Alternate-key addressing `Books(ISBN='…')`      | 400 — annotation present, runtime ignores it  |
+| `cast()` in `$filter`                           | 501 Not Implemented                           |
+| Function/action imports in the service document | absent — `IncludeInServiceDocument` never set |
 
-| Scenario                                                        | Result                                             |
-| --------------------------------------------------------------- | -------------------------------------------------- |
-| `POST /Books/$query` with `text/plain` body (odata2ts#383/#388) | **400**                                            |
-| `$ref` relationship management                                  | **404**                                            |
-| Function/action imports in the service document                 | absent - CAP never sets `IncludeInServiceDocument` |
+The alternate-key row is the sharpest case in this server of metadata promising what the runtime does
+not deliver, which is why it is kept in [test/requests.http](test/requests.http).
 
 ---
 
-## Out of scope
+## 5. Overview
 
-The companion torture fixture
-[`odata-test-data-model-quirks.xml`](../../odata-test-data-model-quirks.xml) - property names
-containing a space or a slash, and an `EnumType` with zero members - is **not** implemented. Those
-constructs are deliberately CSDL-invalid; the CDS compiler will not emit them, and forcing them would
-require post-processing the generated EDMX, which would say nothing about CAP itself.
+**Realizable** answers "can you build this with CAP?" — ✅ yes, ❌ no.
+**Approach** distinguishes following the OData spec from solving the problem CAP's own way.
+
+### Modelling
+
+| Feature                                   | Realizable | Approach | Note                                                    |
+| ----------------------------------------- | ---------- | -------- | ------------------------------------------------------- |
+| Entity types, keys, composite keys        | ✅         | spec     |                                                         |
+| Associations, navigation properties       | ✅         | spec     | plus extra FK properties (§2.2)                         |
+| Referential constraints                   | ✅         | spec     | 9 emitted                                               |
+| `OnDelete Cascade`                        | ✅         | spec     | from compositions                                       |
+| Singletons                                | ✅         | spec     |                                                         |
+| **Open types**                            | ✅         | spec     | `@open` → `OpenType="true"`                             |
+| Collections of primitives / complex types | ✅         | spec     |                                                         |
+| Complex types                             | ✅         | spec     | in collections and operation signatures                 |
+| Structured elements on entities           | ✅         | **own**  | flattened to columns (§2.1)                             |
+| Type hierarchies                          | ✅         | **own**  | aspects/mixins, table-per-leaf-class (§1.1)             |
+| Abstract types                            | ✅         | **own**  | replaced by reuse aspects; `abstract entity` deprecated |
+| Document/part-of structures               | ✅         | **own**  | compositions instead of containment (§1.2)              |
+| Enumerations                              | ✅         | **own**  | `Validation.AllowedValues`, not `<EnumType>` (§1.3)     |
+| Named type aliases                        | ✅         | **own**  | inlined, no `<TypeDefinition>` (§2.3)                   |
+| Multiple namespaces per service           | ❌         | —        | one schema per service (§1.4)                           |
+| Flags enums and the `has` operator        | ❌         | —        | follows from §1.3                                       |
+| Alternate-key addressing                  | ❌         | —        | annotation renders, runtime ignores it                  |
+| `Unicode` facet                           | ❌         | —        | dropped (§2.4)                                          |
+
+### Data types
+
+| Feature                                                   | Realizable | Approach | Note                                                 |
+| --------------------------------------------------------- | ---------- | -------- | ---------------------------------------------------- |
+| String, Boolean, Guid, Int16/32/64, Byte, Double, Decimal | ✅         | spec     |                                                      |
+| Date, TimeOfDay, DateTimeOffset                           | ✅         | spec     |                                                      |
+| Binary, Stream                                            | ✅         | spec     | incl. `/$value` and stream upload                    |
+| Named stream properties                                   | ✅         | spec     | `@Core.MediaType` on `LargeBinary`                   |
+| Media entities (`HasStream`)                              | ✅         | **own**  | modelled as a stream property instead (§2.4)         |
+| `Edm.Duration`, `Edm.SByte`, `Edm.Single`                 | ✅         | **own**  | type override + handler code; conformant (§3.2)      |
+| Geography / Geometry family                               | ❌         | —        | WKT strings, no GeoJSON, no `geo.*` functions (§3.3) |
+| `Edm.Untyped`                                             | ❌         | —        | delivered as a quoted string (§3.3)                  |
+| OData 4.01 document version                               | ❌         | —        | 4.01 types inside a `Version="4.0"` document (§3.4)  |
+| `Edm.Decimal` JSON representation                         | ❌         | —        | string in entities, number from functions (§3.5)     |
+
+### Operations
+
+| Feature                           | Realizable | Approach | Note                                             |
+| --------------------------------- | ---------- | -------- | ------------------------------------------------ |
+| Unbound functions and actions     | ✅         | spec     | all return-type variants                         |
+| Bound functions and actions       | ✅         | spec     | incl. binding to collections                     |
+| Actions without a return type     | ✅         | spec     |                                                  |
+| Complex and collection parameters | ✅         | spec     | incl. `@p1` aliasing                             |
+| `EntitySetPath`                   | ✅         | spec     | derived automatically                            |
+| Operations on a type hierarchy    | ✅         | **own**  | declared per concrete type (§1.1)                |
+| Operation overloads               | ❌         | —        | duplicate names rejected by the compiler         |
+| `IsComposable`                    | ❌         | —        | always `false`, though query options still apply |
+| Imports in the service document   | ❌         | —        | `IncludeInServiceDocument` never set             |
+
+### Protocol
+
+| Feature                                                     | Realizable | Approach | Note                                            |
+| ----------------------------------------------------------- | ---------- | -------- | ----------------------------------------------- |
+| `$filter`, `$orderby`, `$top`, `$skip`, `$count`, `$search` | ✅         | spec     |                                                 |
+| `$expand`, incl. nested `$count`/`$top`                     | ✅         | spec     |                                                 |
+| `$apply` / `groupby`                                        | ✅         | spec     |                                                 |
+| `$batch`, JSON and multipart                                | ✅         | spec     |                                                 |
+| Deep insert, `@odata.bind`                                  | ✅         | spec     |                                                 |
+| ETags / optimistic concurrency                              | ✅         | spec     | 428 / 200 / 412 all correct                     |
+| Explicit `null` vs. omitted property                        | ✅         | spec     |                                                 |
+| Streams                                                     | ✅         | spec     |                                                 |
+| Deep `$select` into complex types                           | ❌         | —        | follows from §2.1; available in structured mode |
+| `cast()` in `$filter`                                       | ❌         | —        | 501                                             |
+| `POST /$query`                                              | ❌         | —        | 400                                             |
+| `$ref` relationship management                              | ❌         | —        | 404                                             |
+
+---
+
+## Conclusion
+
+CAP reproduces the **protocol and operation surface** of the reference model essentially completely,
+and it does so without special effort — all 29 operations, every return-type combination, `$batch`,
+deep insert, ETags, streams, `$apply`.
+
+Where it diverges, it mostly diverges **on purpose**. Inheritance, abstract types, containment and
+enum types are not gaps; they are places where CAP solved the same modelling problem with mixins,
+compositions and value constraints, and then projected that solution into EDM. Judging those as
+missing features means judging CAP against a paradigm it explicitly rejected — and `abstract entity`
+being _deprecated_ rather than _unimplemented_ is the clearest signal of that.
+
+The genuine gaps are narrower than a first pass suggests, and they cluster: **spatial types** (no
+GeoJSON, no `geo.*` functions), **flags enums and `has`**, **operation overloads**, **alternate-key
+addressing**, and a handful of **spec inconsistencies** — `Edm.Decimal` as a string, 4.01 types in a
+4.0 document, and `IsComposable` under-declaring what the runtime actually does. Those last ones
+matter most for a typed client, because they are cases where the metadata cannot be trusted as a
+contract.

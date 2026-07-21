@@ -1,4 +1,4 @@
-﻿import cds from "@sap/cds";
+import cds from "@sap/cds";
 import { boundKey, toNumber } from "./shared";
 
 const { SELECT, INSERT, UPDATE } = cds.ql;

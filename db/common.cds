@@ -9,17 +9,19 @@ namespace Library.Catalog;
 
 /**
  * Reference model: `<TypeDefinition Name="ISBN" UnderlyingType="Edm.String" MaxLength="13"/>`.
- * GAP G11: CAP inlines type definitions - this renders as a plain `Edm.String` with MaxLength 13,
- * no `<TypeDefinition>` element is emitted.
+ * CAP inlines named aliases for primitives - this renders as `Edm.String MaxLength="13"`,
+ * no `<TypeDefinition>` is emitted (FEATURE-COVERAGE.md §2.3).
  */
 type ISBN : String(13);
 
 /**
  * Reference model: abstract ComplexType `Address`, extended by `PostalAddress`.
- * GAP G1: structured elements are flattened (`Address_Street`, ...) when used as a singular
- * element of an entity. A real `<ComplexType>` is only emitted where the type is used as a
- * collection (`many PostalAddress`) or as an operation parameter / return type.
- * GAP G2: there is no abstract-vs-concrete distinction - both render identically.
+ *
+ * CAP flattens a structured element used directly on an entity into columns (`Address_Street`, ...),
+ * because the entity maps to a table and the OData view inherits that shape; capire recommends
+ * keeping models "as flat as possible". A real `<ComplexType>` is emitted where there is no column
+ * equivalent: as a collection (`many PostalAddress`) or in an operation signature.
+ * See FEATURE-COVERAGE.md §2.1, which also documents the `cds.odata.structs` alternative.
  */
 type Address {
   Street : String(120);
@@ -40,15 +42,17 @@ type ConditionReport {
 type MediumStats {
   TotalLoanCount      : Int64;
 
-  /** GAP: no CDS type maps to Edm.Duration - metadata is overridden, values stay strings. */
+  /** No CDS type maps to Edm.Duration; handlers emit ISO 8601, which is conformant (�3.2). */
   @odata.Type: 'Edm.Duration'
   AverageLoanDuration : String;
 }
 
 /**
  * Reference model: `<EnumType Name="AvailabilityStatus" UnderlyingType="Edm.Byte">`.
- * GAP G7: CAP does not emit `<EnumType>`. The element renders as its underlying primitive
- * (`Edm.Byte`) plus a `Validation.AllowedValues` annotation carrying the symbolic names.
+ *
+ * In CDS an enum is a *constraint on a value*, not a type of its own: the element renders as its
+ * underlying primitive (`Edm.Byte`) plus a `Validation.AllowedValues` annotation carrying the
+ * symbolic names. See FEATURE-COVERAGE.md §1.3.
  */
 type AvailabilityStatus : UInt8 enum {
   Available = 0;
@@ -60,8 +64,10 @@ type AvailabilityStatus : UInt8 enum {
 /**
  * Reference model: `<EnumType Name="Amenities" IsFlags="true">` with the deliberately
  * non-power-of-two combined member `FullService = 31` and the non-ASCII member `Café`.
- * GAP G7: no `<EnumType>`, therefore also no `IsFlags` and no support for the `has` operator.
- * The non-ASCII identifier itself survives (escaped as `![Café]` in CDL).
+ *
+ * Both members survive as values (the non-ASCII identifier escaped as `![Café]` in CDL). What does
+ * not survive is `IsFlags`, and with it the `has` operator - a real loss of query capability rather
+ * than just a different rendering. FEATURE-COVERAGE.md §1.3.
  */
 type Amenities : Integer enum {
   WheelchairAccessible = 1;
