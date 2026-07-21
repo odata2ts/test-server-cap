@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Compile the model to EDMX
+        run: npx cds compile srv --to edmx --dest gen/edmx
+
+      - name: Deploy seed data and smoke-test the service
+        run: |
+          npx cds deploy
+          npx cds serve --port 4004 &
+          npx wait-on -t 60000 http://localhost:4004/odata/v4/library/
+          curl -sfS 'http://localhost:4004/odata/v4/library/$metadata' > /dev/null
+          curl -sfS 'http://localhost:4004/odata/v4/library/Books?$top=1' > /dev/null
+          curl -sfS 'http://localhost:4004/odata/v4/library/TotalMediaCount()' > /dev/null

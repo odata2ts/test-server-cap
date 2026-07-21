@@ -1,0 +1,48 @@
+{
+  "name": "test-server-cap",
+  "version": "0.0.1",
+  "private": true,
+  "description": "SAP CAP implementation of the odata2ts OData V4 server feature test model \"Library\"",
+  "homepage": "https://github.com/odata2ts/test-server-cap",
+  "repository": "git@github.com:odata2ts/test-server-cap.git",
+  "license": "MIT",
+  "imports": {
+    "#cds-models/*": "./@cds-models/*/index.js"
+  },
+  "scripts": {
+    "build": "cds build",
+    "deploy": "cds deploy",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "metadata": "cds compile srv --to edmx --dest gen/edmx",
+    "start": "cds watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cap-js/sqlite": "^3",
+    "@sap/cds": "^10.0.3"
+  },
+  "devDependencies": {
+    "@cap-js/cds-typer": ">=0.1",
+    "@cap-js/cds-types": "^0.18.0",
+    "@ianvs/prettier-plugin-sort-imports": "^4.3.1",
+    "@types/node": "^24.0.0",
+    "prettier": "^3.3.3",
+    "prettier-plugin-packagejson": "^2.5.1",
+    "tsx": "^4",
+    "typescript": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "cds": {
+    "requires": {
+      "db": {
+        "kind": "sqlite",
+        "credentials": {
+          "url": "db.sqlite"
+        }
+      }
+    }
+  }
+}

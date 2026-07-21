@@ -1,0 +1,4 @@
+Id,Name,DateOfBirth,Address_Street,Address_City,Address_PostalCode,Address_Country,PreviousAddresses,ActiveSince,Balance,IdDocument_Id
+1,Anna Berger,1988-03-14,Lindenweg 4,Hamburg,22765,DE,"[{""Street"":""Alte Gasse 9"",""City"":""Bremen"",""PostalCode"":""28195"",""Country"":""DE""}]",2019-04-01T09:15:00Z,0.00,aaaaaaaa-0000-0000-0000-000000000001
+2,Bernd Clausen,1975-11-02,Marktplatz 7,Hamburg,20095,DE,"[{""Street"":""Feldstrasse 21"",""City"":""Kiel"",""PostalCode"":""24103"",""Country"":""DE""},{""Street"":""Seeweg 3"",""City"":""Luebeck"",""PostalCode"":""23552"",""Country"":""DE""}]",2015-01-20T11:00:00Z,12.50,aaaaaaaa-0000-0000-0000-000000000002
+3,Clara Dietrich,1999-07-30,Parkallee 88,Hamburg,22297,DE,[],2024-09-05T16:40:00Z,0.00,

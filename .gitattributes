@@ -1,0 +1,7 @@
+# Normalise line endings to LF in the repository, so that a Windows checkout plus
+# Prettier does not produce CRLF-only diffs.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.sqlite binary

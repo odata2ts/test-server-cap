@@ -1,0 +1,354 @@
+###############################################################################
+# "Library" OData V4 test model - request collection
+#
+# Start the server first:   npm run deploy && npm start
+# Every request carries the result actually observed against @sap/cds 10.0.3.
+# See ../FEATURE-COVERAGE.md for the full verdict list.
+###############################################################################
+
+@host = http://localhost:4004/odata/v4/library
+
+# Fixed keys from the seed data (db/data/*.csv)
+@book = 11111111-1111-1111-1111-111111111111
+@audiobook = 44444444-4444-4444-4444-444444444441
+@ebook = 66666666-6666-6666-6666-666666666661
+@collectorsItem = 77777777-7777-7777-7777-777777777771
+@idDocument = aaaaaaaa-0000-0000-0000-000000000001
+@openLoan = bbbbbbbb-0000-0000-0000-000000000002
+
+###############################################################################
+# Service document & metadata
+###############################################################################
+
+### 200 - lists 17 entity sets + the MainBranch singleton.
+### Note: no function/action imports appear - CAP never sets IncludeInServiceDocument.
+GET {{host}}/
+
+### 200 - the central comparison artifact. Diff against
+### ../../../odata-test-data-model-library.xml.
+GET {{host}}/$metadata
+
+###############################################################################
+# Reading, query options
+###############################################################################
+
+### 200
+GET {{host}}/Books?$top=2
+
+### 200 - @odata.count present
+GET {{host}}/Books?$orderby=Title&$top=2&$skip=1&$count=true
+
+### 200 - plain count segment
+GET {{host}}/Books/$count
+
+### 200 - navigation over the unmanaged MediumId backlink
+GET {{host}}/Books({{book}})?$expand=Copies
+
+### 200 - $count inside $expand is honoured
+GET {{host}}/Books({{book}})?$expand=Copies($count=true;$top=1)
+
+### 200 - CAP maps $search onto the annotated Searchable sets
+GET {{host}}/Books?$search=Prozess
+
+### 200
+GET {{host}}/Copies?$filter=Status eq 1
+
+### 200 - 16-value in() chain, no recursion limit hit (odata2ts#337)
+GET {{host}}/Copies?$filter=InventoryNumber in (1001,1002,1003,1004,1005,1006,2001,4001,5001,6001,7001,7002,7003,7004,7005,7006)
+
+### 200 - $apply/groupby works
+GET {{host}}/Copies?$apply=groupby((Status),aggregate($count as Count))
+
+### 200 - the singleton
+GET {{host}}/MainBranch
+
+### 200 - explicit null (not an omitted property) for the open loan
+GET {{host}}/Loans({{openLoan}})?$select=ReturnedAt
+
+###############################################################################
+# Exotic data types
+###############################################################################
+
+### 200 - Edm.Geography*/Edm.Geometry* in $metadata, WKT strings on the wire (GAP G13)
+GET {{host}}/Branches(1)?$select=Location,CatchmentArea,FloorPlanOrigin,FloorPlanShapes
+
+### 200 - Edm.Untyped declared, plain JSON string delivered (GAP G13/G10)
+GET {{host}}/CollectorsItems({{collectorsItem}})?$select=ExtraData
+
+### 200 - Edm.Duration declared, ISO 8601 string delivered
+GET {{host}}/Audiobooks({{audiobook}})?$select=Duration
+
+### 200 - Edm.Binary as base64
+GET {{host}}/IdDocuments({{idDocument}})/Scan/$value
+
+###############################################################################
+# Streams
+###############################################################################
+
+### 204 - media-entity-style stream upload
+PUT {{host}}/EBooks({{ebook}})/content
+Content-Type: application/epub+zip
+
+EPUB-PLACEHOLDER-BYTES
+
+### 200 - and back out again
+GET {{host}}/EBooks({{ebook}})/content
+
+### 204 - named stream property next to the entity's own data
+PUT {{host}}/Audiobooks({{audiobook}})/Sample
+Content-Type: audio/mpeg
+
+MP3-PLACEHOLDER
+
+### 200
+GET {{host}}/Audiobooks({{audiobook}})/Sample
+
+###############################################################################
+# Unbound functions
+###############################################################################
+
+### 200 -> 16
+GET {{host}}/TotalMediaCount()
+
+### 200 -> ["de","en","ja","la"]
+GET {{host}}/AllLanguages()
+
+### 200 - complex type in, complex type out (@p1 aliasing, odata2ts#285/#291)
+GET {{host}}/LoanStatistics(Period=@p1)?@p1={"From":"2026-01-01","To":"2026-12-31"}
+
+### 200 - Collection(BranchStats)
+GET {{host}}/StatsPerBranch()
+
+### 200 - single entity
+GET {{host}}/MostReadMedium()
+
+### 200 - Collection(entity)
+GET {{host}}/NewReleases()
+
+### 200 - both parameters
+GET {{host}}/Search(Term='Der',MaxResults=2)
+
+### 200 - MaxResults omitted; the reference model's separate 1-parameter overload
+### does not exist here (GAP G4)
+GET {{host}}/Search(Term='Der')
+
+###############################################################################
+# Unbound actions
+###############################################################################
+
+### 200 -> next free inventory number
+POST {{host}}/NextInventoryNumber
+Content-Type: application/json
+
+{}
+
+### 204 - the no-return-type case
+POST {{host}}/ClosureDay
+Content-Type: application/json
+
+{"Day":"2026-12-24"}
+
+### 200 - collection parameter in, collection out (odata2ts#72)
+POST {{host}}/CleanUpKeywords
+Content-Type: application/json
+
+{"Obsolete":["Klassiker","Unsinn"]}
+
+### 200 - complex return type
+POST {{host}}/YearEndClosing
+Content-Type: application/json
+
+{"Year":2026}
+
+### 200 - Collection(OverdueNotice)
+POST {{host}}/RunOverdueNotices
+Content-Type: application/json
+
+{}
+
+### 200 - creates and returns an open-type entity
+POST {{host}}/AcquireCollectorsItem
+Content-Type: application/json
+
+{"Title":"Testobjekt","Description":"aus dem Nachlass"}
+
+### 200 - Collection(entity)
+POST {{host}}/RunStockCheck
+Content-Type: application/json
+
+{}
+
+###############################################################################
+# Bound operations
+#
+# Declared once per concrete media type instead of once on the abstract Medium
+# (GAP G2) - swap `Books` for Magazines/TradeJournals/Audiobooks/DVDs/EBooks/
+# CollectorsItems to reach the other bindings.
+###############################################################################
+
+### 200 - complex return type
+GET {{host}}/Books({{book}})/Library.Service.LoanMetrics()
+
+### 200 - single entity; CAP derives EntitySetPath="in"
+GET {{host}}/Books({{book}})/Library.Service.AvailableCopy()
+
+### 200 - Collection(entity); IsComposable is false here, unlike the reference model (GAP G5)
+GET {{host}}/Books({{book}})/Library.Service.AvailableCopies()
+
+### 200 - bound to the *collection*
+GET {{host}}/Books/Library.Service.AvailableLanguages()
+
+### 200 - Edm.Decimal
+GET {{host}}/Members(2)/Library.Service.OutstandingBalance()
+
+### 200 - Collection(complex)
+GET {{host}}/Members(2)/Library.Service.NoticeHistory()
+
+### 200 - primitive return type on a bound action
+POST {{host}}/Books({{book}})/Library.Service.Reserve
+Content-Type: application/json
+
+{"MemberId":1}
+
+### 200 - Collection(complex) from an action
+POST {{host}}/Members(2)/Library.Service.RunReminders
+Content-Type: application/json
+
+{}
+
+### 200 - entity-returning bound action, EntitySetPath="in"
+POST {{host}}/Loans({{openLoan}})/Library.Service.Renew
+Content-Type: application/json
+
+{}
+
+### 200 - bound to the collection, returns Collection(entity)
+POST {{host}}/Loans/Library.Service.RenewAll
+Content-Type: application/json
+
+{}
+
+### 200 - bound to the collection, returns Collection(Edm.String)
+POST {{host}}/Loans/Library.Service.BulkRenew
+Content-Type: application/json
+
+{}
+
+###############################################################################
+# Optimistic concurrency (Copies carries @odata.etag on Condition)
+###############################################################################
+
+### 200 - note the ETag header, needed by the two requests below
+GET {{host}}/Copies(MediumId={{book}},InventoryNumber=1001)
+
+### 428 Precondition Required - bound actions on an ETag entity need If-Match.
+### Correct OData behaviour, not a defect.
+POST {{host}}/Copies(MediumId={{book}},InventoryNumber=1001)/Library.Service.AssessCondition
+Content-Type: application/json
+
+{"NewCondition":2,"Remark":"ohne If-Match"}
+
+### 200 - same call with a matching If-Match (adjust the ETag to the value above)
+POST {{host}}/Copies(MediumId={{book}},InventoryNumber=1001)/Library.Service.AssessCondition
+Content-Type: application/json
+If-Match: W/"1"
+
+{"NewCondition":2,"Remark":"mit If-Match"}
+
+### 412 Precondition Failed - stale ETag
+PATCH {{host}}/Copies(MediumId={{book}},InventoryNumber=1001)
+Content-Type: application/json
+If-Match: W/"999"
+
+{"Condition":5}
+
+### 204 - the no-return bound action, with a valid If-Match
+POST {{host}}/Copies(MediumId=11111111-1111-1111-1111-111111111112,InventoryNumber=1003)/Library.Service.CheckOut
+Content-Type: application/json
+If-Match: W/"1"
+
+{"MemberId":1}
+
+###############################################################################
+# Write scenarios
+###############################################################################
+
+### 201 - deep insert: audiobook plus its chapters in one payload
+POST {{host}}/Audiobooks
+Content-Type: application/json
+
+{"Title":"Deep Insert Probe","Chapters":[{"Id":1,"Title":"Kapitel A"}]}
+
+### 201 - @odata.bind resolves the association
+POST {{host}}/Books
+Content-Type: application/json
+
+{"Title":"Bind Probe","Publisher@odata.bind":"Publishers(1)"}
+
+### 201 - an @odata.type discriminator is accepted but has no effect: without
+### inheritance (GAP G2) there is no subtype to select (odata2ts#257)
+POST {{host}}/Books
+Content-Type: application/json
+
+{"@odata.type":"#Library.Service.Books","Title":"Type Discriminator Probe"}
+
+###############################################################################
+# $batch
+###############################################################################
+
+### 200 - JSON batch
+POST {{host}}/$batch
+Content-Type: application/json
+
+{"requests":[{"id":"1","method":"get","url":"Books?$top=1"}]}
+
+### 200 - multipart batch
+POST {{host}}/$batch
+Content-Type: multipart/mixed;boundary=b
+
+--b
+Content-Type: application/http
+Content-Transfer-Encoding: binary
+
+GET Books?$top=1 HTTP/1.1
+
+
+--b--
+
+###############################################################################
+# Known failures - kept deliberately, they document CAP's limits
+# (see FEATURE-COVERAGE.md for the matching gap IDs)
+###############################################################################
+
+### 400 - GAP G1: `Address` is flattened to Address_Street/Address_City/...,
+### so the complex property does not exist under that name.
+GET {{host}}/Members(1)?$select=Address
+
+### 400 - GAP G1: consequently no deep $select into a complex type either
+### (odata2ts#391/#393)
+GET {{host}}/Members(1)?$select=Address/City
+
+### 400 - GAP G6: `@Core.AlternateKeys` is in $metadata, but the runtime
+### does not resolve alternate-key addressing
+GET {{host}}/Books(ISBN='9783150094440')
+
+### 400 - GAP G7: no EnumType means no IsFlags and no `has` operator
+GET {{host}}/Branches?$filter=Amenities has 2
+
+### 501 Not Implemented - cast() in $filter (odata2ts#323)
+GET {{host}}/Books?$filter=cast(PageCount,Edm.String) eq '224'
+
+### 400 - POST with query options in a text/plain body is unsupported
+### (odata2ts#383/#388)
+POST {{host}}/Books/$query
+Content-Type: text/plain
+
+$filter=Language eq 'de'&$top=2
+
+### 404 - $ref / relationship management is not implemented
+GET {{host}}/Books({{book}})/Publisher/$ref
+
+### 400 - correctly rejected: $expand only applies to navigation properties,
+### and Keywords is a Collection(Edm.String) (odata2ts#372/#379).
+### This is a *pass*, listed here because it is a negative test.
+GET {{host}}/Books?$expand=Keywords
