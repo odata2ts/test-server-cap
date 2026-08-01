@@ -1,0 +1,19 @@
+# Installed inside the image by `npm ci`
+node_modules
+
+# Build output and generated model types - recreated inside the image
+gen
+@cds-models
+
+# The database is deployed during the build; a local one must not leak into the image
+*.sqlite
+*.sqlite-journal
+
+.git
+.github
+.vscode
+.idea
+
+*.log
+.env
+.DS_Store
