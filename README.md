@@ -8,10 +8,11 @@ TypeScript / Node.js, SQLite only. No Java, no HANA, no cloud services.
 
 ## Why this exists
 
-The reference model lives outside this repo, alongside it in the odata2ts workspace:
+The reference model lives in its own repository,
+[odata2ts/test-reference-model](https://github.com/odata2ts/test-reference-model):
 
-- `odata-test-data-model-library.md` - concept, design decisions, feature → location mapping
-- `odata-test-data-model-library.xml` - the reference EDMX (OData **4.01**, 100 % CSDL-conformant)
+- [`model/library.md`](https://github.com/odata2ts/test-reference-model/blob/main/model/library.md) - concept, design decisions, feature → location mapping
+- [`model/library.xml`](https://github.com/odata2ts/test-reference-model/blob/main/model/library.xml) - the reference EDMX (OData **4.01**, 100 % CSDL-conformant)
 
 That model is a deliberately feature-dense probe of the OData spec, not a benchmark. An OData server
 does not have to implement all of OData, and a framework may well solve a modelling problem its own
