@@ -1,7 +1,7 @@
 # CAP and the "Library" OData V4 test model
 
 How far SAP CAP (Node.js) can reproduce
-[`odata-test-data-model-library.xml`](../../odata-test-data-model-library.xml), and — more
+[`model/library.xml`](https://github.com/odata2ts/test-reference-model/blob/main/model/library.xml), and — more
 interestingly — **where it deliberately does something else**.
 
 Measured against **@sap/cds 10.0.3** / **@sap/cds-dk 10.0.5**, Node 26, `@cap-js/sqlite` 3.
