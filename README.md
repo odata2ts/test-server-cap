@@ -43,13 +43,38 @@ Where a request fails because of a CAP limitation, it is **kept**, so the failur
 
 ## Getting started
 
-Requires Node.js ≥ 22 and `@sap/cds-dk` (developed against 10.0.5).
+### As a container
+
+The published image is the intended way to consume this server - no Node.js, no CAP tooling, no
+database setup:
+
+```bash
+docker run --rm -p 4004:4004 ghcr.io/odata2ts/test-server-cap:latest
+```
+
+The seed data is baked into the image, so every container starts from the identical, well-known state.
+That is what makes it usable from an automated test suite: see
+[odata2ts](https://github.com/odata2ts/odata2ts/tree/main/int-test/cap), which starts and stops it per
+test run via testcontainers.
+
+`latest` is republished from every push to `main`, and a version tag additionally yields `1.2.3`,
+`1.2` and `1`. The image is smoke-tested before it is pushed - including one custom operation, since
+those come from the TypeScript handlers and are the part most likely to break.
+
+### Locally
+
+Requires Node.js ≥ 22. `@sap/cds-dk` comes in as a dev dependency (developed against 10.0.6).
 
 ```bash
 npm install
 npm run deploy   # creates db.sqlite and loads db/data/*.csv
 npm start        # cds watch, serves on http://localhost:4004
 ```
+
+> **Serve it with `cds serve`, not `cds-serve`.** The `cds-serve` binary of `@sap/cds` brings up the
+> generic CRUD surface but does not load the TypeScript service implementation, so every custom
+> operation answers `501 … has no handler` - and registering `tsx` as a loader does not change that.
+> Use `cds serve` from `@sap/cds-dk`, which is what `npm start` and the image both do.
 
 Service root: <http://localhost:4004/odata/v4/library/> ·
 metadata: <http://localhost:4004/odata/v4/library/$metadata>

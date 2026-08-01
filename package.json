@@ -26,6 +26,7 @@
     "@cap-js/cds-typer": ">=0.1",
     "@cap-js/cds-types": "^0.18.0",
     "@ianvs/prettier-plugin-sort-imports": "^4.3.1",
+    "@sap/cds-dk": "^10",
     "@types/node": "^24.0.0",
     "prettier": "^3.3.3",
     "prettier-plugin-packagejson": "^2.5.1",
