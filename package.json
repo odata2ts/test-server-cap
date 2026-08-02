@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@cap-js-community/odata-v2-adapter": "^1.16.0",
     "@cap-js/sqlite": "^3",
     "@sap/cds": "^10.0.3"
   },
