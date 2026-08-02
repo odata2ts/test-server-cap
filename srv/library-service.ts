@@ -2,6 +2,7 @@ import cds from "@sap/cds";
 import { registerAdminHandlers } from "./handlers/admin";
 import { registerCatalogHandlers } from "./handlers/catalog";
 import { registerCirculationHandlers } from "./handlers/circulation";
+import { registerKeyHandlers } from "./handlers/keys";
 
 /**
  * Implementation of `Library.Service` (srv/library-service.cds).
@@ -13,6 +14,7 @@ import { registerCirculationHandlers } from "./handlers/circulation";
  */
 export default class LibraryService extends cds.ApplicationService {
   async init(): Promise<void> {
+    registerKeyHandlers(this);
     registerCatalogHandlers(this);
     registerCirculationHandlers(this);
     registerAdminHandlers(this);
