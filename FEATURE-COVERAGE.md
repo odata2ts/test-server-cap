@@ -123,7 +123,8 @@ rule presents itself — measured against this model:
 
 | Nested payload for …                                        | Result                                                                                                                   |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| composition `Audiobooks/Chapters`                           | 201, children created and linked, `up__Id` filled in from the parent                                                     |
+| to-many composition `Audiobooks/Chapters`                   | 201, children created and linked, `up__Id` filled in from the parent                                                     |
+| to-one composition `Members/IdDocument`                     | 201, the document is created — the same nested shape that a to-one _association_ refuses two rows below                  |
 | to-one association `Copies/Location`, key only (`{"Id":1}`) | 201, foreign key `Location_Id` set — no `Branch` created, exactly as documented                                          |
 | to-one association, empty object (`{}`)                     | 201, no-op                                                                                                               |
 | to-one association, any non-key property                    | **400** `Property "Name" does not exist in Location` — also when the key is present alongside it                         |
@@ -139,7 +140,18 @@ The asymmetry has a logic once the rule is in view: for a to-one association the
 the entity being written, so a key is something the runtime can act on; for a to-many it sits on the
 child, so there is nothing on this side to fill in. Only the silence is surprising.
 
-This model has no to-one composition, so that combination is untested here.
+The first two rows are why `Member.IdDocument` is modelled as a **composition** here while every other
+to-one relationship is an association ([db/circulation.cds](db/circulation.cds)). EDMX cannot express
+the distinction — the reference model's plain navigation property permits either reading — and an
+identity document is the one relationship in this model where "part of" is the honest one: it belongs
+to exactly one member and should go when the member does. Without it the two rows that matter most
+here could not be told apart on this server at all, since cardinality is not the discriminator.
+
+That choice has a price, and it is the only one: CAP emits `<OnDelete Action="Cascade"/>` on the
+navigation property, where the reference model declares none. Deleting a member therefore removes the
+document (verified: 204, then 404 on the document). Everything else is untouched — the `IdDocument_Id`
+foreign key, the `IdDocuments` entity set, and `Scan/$value` upload and download all behave as before,
+and the emitted metadata differs in that single line.
 
 ### 1.3 Enums as constraints, not as types
 
@@ -404,23 +416,24 @@ One modelling constraint worth knowing: bound operations must be declared on the
 
 ### 4.2 Protocol
 
-| Scenario                                                           | Result                                  |
-| ------------------------------------------------------------------ | --------------------------------------- |
-| `$filter`, `$orderby`, `$top`, `$skip`, `$count`, `$search`        | 200                                     |
-| `$count` segment (`/Books/$count`)                                 | 200                                     |
-| `$expand`, incl. `$expand=Copies($count=true;$top=1)`              | 200                                     |
-| `$apply=groupby((Status),aggregate($count as Count))`              | 200                                     |
-| 16-value `in()` chain                                              | 200, no recursion limit                 |
-| `$batch`, both JSON and multipart                                  | 200                                     |
-| Deep insert along a composition (audiobook + chapters in one POST) | 201, children created (§1.2)            |
-| Deep insert along a to-one association, key only                   | 201, foreign key filled in (§1.2)       |
-| Deep insert along a to-one association, any other property         | 400 (§1.2)                              |
-| Deep insert along a to-many association                            | 201, payload silently dropped (§1.2)    |
-| `@odata.bind`                                                      | 201                                     |
-| ETag round trip: 428 without `If-Match`, 200 with, 412 when stale  | correct                                 |
-| Explicit `null` vs. omitted property                               | `ReturnedAt: null` delivered explicitly |
-| `$expand` on a non-navigation property rejected                    | 400 — correct                           |
-| Streams: upload and download, media-style and named property       | 204 / 200                               |
+| Scenario                                                          | Result                                  |
+| ----------------------------------------------------------------- | --------------------------------------- |
+| `$filter`, `$orderby`, `$top`, `$skip`, `$count`, `$search`       | 200                                     |
+| `$count` segment (`/Books/$count`)                                | 200                                     |
+| `$expand`, incl. `$expand=Copies($count=true;$top=1)`             | 200                                     |
+| `$apply=groupby((Status),aggregate($count as Count))`             | 200                                     |
+| 16-value `in()` chain                                             | 200, no recursion limit                 |
+| `$batch`, both JSON and multipart                                 | 200                                     |
+| Deep insert along a to-many composition (audiobook + chapters)    | 201, children created (§1.2)            |
+| Deep insert along a to-one composition (member + id document)     | 201, child created (§1.2)               |
+| Deep insert along a to-one association, key only                  | 201, foreign key filled in (§1.2)       |
+| Deep insert along a to-one association, any other property        | 400 (§1.2)                              |
+| Deep insert along a to-many association                           | 201, payload silently dropped (§1.2)    |
+| `@odata.bind`                                                     | 201                                     |
+| ETag round trip: 428 without `If-Match`, 200 with, 412 when stale | correct                                 |
+| Explicit `null` vs. omitted property                              | `ReturnedAt: null` delivered explicitly |
+| `$expand` on a non-navigation property rejected                   | 400 — correct                           |
+| Streams: upload and download, media-style and named property      | 204 / 200                               |
 
 Not implemented:
 
@@ -449,26 +462,26 @@ is a `Copy` whose `MediumId` matches no medium. Whether that follows from the SQ
 
 ### Modelling
 
-| Feature                                   | Realizable | Approach | Note                                                    |
-| ----------------------------------------- | ---------- | -------- | ------------------------------------------------------- |
-| Entity types, keys, composite keys        | ✅         | spec     |                                                         |
-| Associations, navigation properties       | ✅         | spec     | plus extra FK properties (§2.2)                         |
-| Referential constraints                   | ✅         | spec     | 9 emitted                                               |
-| `OnDelete Cascade`                        | ✅         | spec     | from compositions                                       |
-| Singletons                                | ✅         | spec     |                                                         |
-| **Open types**                            | ✅         | spec     | `@open` → `OpenType="true"`                             |
-| Collections of primitives / complex types | ✅         | spec     |                                                         |
-| Complex types                             | ✅         | spec     | in collections and operation signatures                 |
-| Structured elements on entities           | ✅         | **own**  | flattened to columns (§2.1)                             |
-| Type hierarchies                          | ✅         | **own**  | aspects/mixins, table-per-leaf-class (§1.1)             |
-| Abstract types                            | ✅         | **own**  | replaced by reuse aspects; `abstract entity` deprecated |
-| Document/part-of structures               | ✅         | **own**  | compositions instead of containment (§1.2)              |
-| Enumerations                              | ✅         | **own**  | `Validation.AllowedValues`, not `<EnumType>` (§1.3)     |
-| Named type aliases                        | ✅         | **own**  | inlined, no `<TypeDefinition>` (§2.3)                   |
-| Multiple namespaces per service           | ❌         | —        | one schema per service (§1.4)                           |
-| Flags enums and the `has` operator        | ❌         | —        | follows from §1.3                                       |
-| Alternate-key addressing                  | ❌         | —        | annotation renders, runtime ignores it                  |
-| `Unicode` facet                           | ❌         | —        | dropped (§2.4)                                          |
+| Feature                                   | Realizable | Approach | Note                                                                     |
+| ----------------------------------------- | ---------- | -------- | ------------------------------------------------------------------------ |
+| Entity types, keys, composite keys        | ✅         | spec     |                                                                          |
+| Associations, navigation properties       | ✅         | spec     | plus extra FK properties (§2.2)                                          |
+| Referential constraints                   | ✅         | spec     | 9 emitted                                                                |
+| `OnDelete Cascade`                        | ✅         | spec     | from compositions, incl. one the reference model does not declare (§1.2) |
+| Singletons                                | ✅         | spec     |                                                                          |
+| **Open types**                            | ✅         | spec     | `@open` → `OpenType="true"`                                              |
+| Collections of primitives / complex types | ✅         | spec     |                                                                          |
+| Complex types                             | ✅         | spec     | in collections and operation signatures                                  |
+| Structured elements on entities           | ✅         | **own**  | flattened to columns (§2.1)                                              |
+| Type hierarchies                          | ✅         | **own**  | aspects/mixins, table-per-leaf-class (§1.1)                              |
+| Abstract types                            | ✅         | **own**  | replaced by reuse aspects; `abstract entity` deprecated                  |
+| Document/part-of structures               | ✅         | **own**  | compositions instead of containment (§1.2)                               |
+| Enumerations                              | ✅         | **own**  | `Validation.AllowedValues`, not `<EnumType>` (§1.3)                      |
+| Named type aliases                        | ✅         | **own**  | inlined, no `<TypeDefinition>` (§2.3)                                    |
+| Multiple namespaces per service           | ❌         | —        | one schema per service (§1.4)                                            |
+| Flags enums and the `has` operator        | ❌         | —        | follows from §1.3                                                        |
+| Alternate-key addressing                  | ❌         | —        | annotation renders, runtime ignores it                                   |
+| `Unicode` facet                           | ❌         | —        | dropped (§2.4)                                                           |
 
 ### Data types
 

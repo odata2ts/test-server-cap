@@ -62,7 +62,13 @@ entity Member {
 
       Loans             : Composition of many Loan on Loans.Member = $self;
       Reservations      : Composition of many Reservation on Reservations.Member = $self;
-      IdDocument        : Association to IdDocument;
+      /**
+       * A composition, unlike the other to-one relationships here: an identity document belongs to
+       * exactly one member and has no life of its own, which is also why it should go when the member
+       * does. EDMX cannot express the distinction, so the reference model's plain navigation property
+       * permits either reading - this is the one place where the "part of" reading is the honest one.
+       */
+      IdDocument        : Composition of IdDocument;
 }
 // Bound operations: see srv/library-service.cds.
 
