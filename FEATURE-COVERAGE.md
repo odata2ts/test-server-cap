@@ -112,6 +112,35 @@ What is missing is the _addressing_ guarantee — chapters are also reachable di
 `/AudiobookChapters`. Verified that this is not a configuration matter: `cds.odata.containment` has
 no effect in cds 10, with either an unmanaged composition or a managed composition-of-aspect.
 
+**Deep writes follow the same line**, and capire states the rule directly: compositions → _"runtime
+deeply creates or updates entries in target entities"_, associations → _"runtime fills in foreign keys
+to existing target entries"_
+([capire, Deep Insert](https://cap.cloud.sap/docs/guides/services/served-ootb#deep-insert)).
+
+The discriminator is therefore the relationship **kind**, not the cardinality: the very same nested
+object is a child in one case and a reference in the other. Worth writing down is how differently that
+rule presents itself — measured against this model:
+
+| Nested payload for …                                        | Result                                                                                                                   |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| composition `Audiobooks/Chapters`                           | 201, children created and linked, `up__Id` filled in from the parent                                                     |
+| to-one association `Copies/Location`, key only (`{"Id":1}`) | 201, foreign key `Location_Id` set — no `Branch` created, exactly as documented                                          |
+| to-one association, empty object (`{}`)                     | 201, no-op                                                                                                               |
+| to-one association, any non-key property                    | **400** `Property "Name" does not exist in Location` — also when the key is present alongside it                         |
+| to-many association `Books/Copies`                          | **201, and the payload is dropped in silence** — it is not even validated: `{"TotalNonsense":42}` passes just as quietly |
+
+The last two rows are the sharp edge, and neither is visible in `$metadata`: the same construct — a
+nested object on a navigation property — is a hard 400 in one case and a silent no-op in the other,
+while a server that models the relationship as containment creates the entity in both. A generated
+client that types navigation properties as writable can therefore emit payloads that are correct per
+EDM and still rejected or ignored here.
+
+The asymmetry has a logic once the rule is in view: for a to-one association the foreign key sits on
+the entity being written, so a key is something the runtime can act on; for a to-many it sits on the
+child, so there is nothing on this side to fill in. Only the silence is surprising.
+
+This model has no to-one composition, so that combination is untested here.
+
 ### 1.3 Enums as constraints, not as types
 
 `AvailabilityStatus` and the `IsFlags` enum `Amenities` render as their **underlying primitive**
@@ -375,20 +404,23 @@ One modelling constraint worth knowing: bound operations must be declared on the
 
 ### 4.2 Protocol
 
-| Scenario                                                          | Result                                  |
-| ----------------------------------------------------------------- | --------------------------------------- |
-| `$filter`, `$orderby`, `$top`, `$skip`, `$count`, `$search`       | 200                                     |
-| `$count` segment (`/Books/$count`)                                | 200                                     |
-| `$expand`, incl. `$expand=Copies($count=true;$top=1)`             | 200                                     |
-| `$apply=groupby((Status),aggregate($count as Count))`             | 200                                     |
-| 16-value `in()` chain                                             | 200, no recursion limit                 |
-| `$batch`, both JSON and multipart                                 | 200                                     |
-| Deep insert (audiobook + chapters in one POST)                    | 201                                     |
-| `@odata.bind`                                                     | 201                                     |
-| ETag round trip: 428 without `If-Match`, 200 with, 412 when stale | correct                                 |
-| Explicit `null` vs. omitted property                              | `ReturnedAt: null` delivered explicitly |
-| `$expand` on a non-navigation property rejected                   | 400 — correct                           |
-| Streams: upload and download, media-style and named property      | 204 / 200                               |
+| Scenario                                                           | Result                                  |
+| ------------------------------------------------------------------ | --------------------------------------- |
+| `$filter`, `$orderby`, `$top`, `$skip`, `$count`, `$search`        | 200                                     |
+| `$count` segment (`/Books/$count`)                                 | 200                                     |
+| `$expand`, incl. `$expand=Copies($count=true;$top=1)`              | 200                                     |
+| `$apply=groupby((Status),aggregate($count as Count))`              | 200                                     |
+| 16-value `in()` chain                                              | 200, no recursion limit                 |
+| `$batch`, both JSON and multipart                                  | 200                                     |
+| Deep insert along a composition (audiobook + chapters in one POST) | 201, children created (§1.2)            |
+| Deep insert along a to-one association, key only                   | 201, foreign key filled in (§1.2)       |
+| Deep insert along a to-one association, any other property         | 400 (§1.2)                              |
+| Deep insert along a to-many association                            | 201, payload silently dropped (§1.2)    |
+| `@odata.bind`                                                      | 201                                     |
+| ETag round trip: 428 without `If-Match`, 200 with, 412 when stale  | correct                                 |
+| Explicit `null` vs. omitted property                               | `ReturnedAt: null` delivered explicitly |
+| `$expand` on a non-navigation property rejected                    | 400 — correct                           |
+| Streams: upload and download, media-style and named property       | 204 / 200                               |
 
 Not implemented:
 
@@ -402,6 +434,11 @@ Not implemented:
 
 The alternate-key row is the sharpest case in this server of metadata promising what the runtime does
 not deliver, which is why it is kept in [test/requests.http](test/requests.http).
+
+One thing the deep-write probes turned up in passing, listed for honesty rather than as a verdict: a
+foreign key pointing at a target that does not exist is accepted (`Location_Id: 987654` → 201), and so
+is a `Copy` whose `MediumId` matches no medium. Whether that follows from the SQLite setup or from
+`@assert.integrity` not being switched on was not investigated.
 
 ---
 
@@ -464,20 +501,20 @@ not deliver, which is why it is kept in [test/requests.http](test/requests.http)
 
 ### Protocol
 
-| Feature                                                     | Realizable | Approach | Note                                            |
-| ----------------------------------------------------------- | ---------- | -------- | ----------------------------------------------- |
-| `$filter`, `$orderby`, `$top`, `$skip`, `$count`, `$search` | ✅         | spec     |                                                 |
-| `$expand`, incl. nested `$count`/`$top`                     | ✅         | spec     |                                                 |
-| `$apply` / `groupby`                                        | ✅         | spec     |                                                 |
-| `$batch`, JSON and multipart                                | ✅         | spec     |                                                 |
-| Deep insert, `@odata.bind`                                  | ✅         | spec     |                                                 |
-| ETags / optimistic concurrency                              | ✅         | spec     | 428 / 200 / 412 all correct                     |
-| Explicit `null` vs. omitted property                        | ✅         | spec     |                                                 |
-| Streams                                                     | ✅         | spec     |                                                 |
-| Deep `$select` into complex types                           | ❌         | —        | follows from §2.1; available in structured mode |
-| `cast()` in `$filter`                                       | ❌         | —        | 501                                             |
-| `POST /$query`                                              | ❌         | —        | 400                                             |
-| `$ref` relationship management                              | ❌         | —        | 404                                             |
+| Feature                                                     | Realizable | Approach | Note                                                                                                             |
+| ----------------------------------------------------------- | ---------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
+| `$filter`, `$orderby`, `$top`, `$skip`, `$count`, `$search` | ✅         | spec     |                                                                                                                  |
+| `$expand`, incl. nested `$count`/`$top`                     | ✅         | spec     |                                                                                                                  |
+| `$apply` / `groupby`                                        | ✅         | spec     |                                                                                                                  |
+| `$batch`, JSON and multipart                                | ✅         | spec     |                                                                                                                  |
+| Deep insert, `@odata.bind`                                  | ✅         | spec     | along compositions; associations get their foreign key filled in, and a to-many one is dropped in silence (§1.2) |
+| ETags / optimistic concurrency                              | ✅         | spec     | 428 / 200 / 412 all correct                                                                                      |
+| Explicit `null` vs. omitted property                        | ✅         | spec     |                                                                                                                  |
+| Streams                                                     | ✅         | spec     |                                                                                                                  |
+| Deep `$select` into complex types                           | ❌         | —        | follows from §2.1; available in structured mode                                                                  |
+| `cast()` in `$filter`                                       | ❌         | —        | 501                                                                                                              |
+| `POST /$query`                                              | ❌         | —        | 400                                                                                                              |
+| `$ref` relationship management                              | ❌         | —        | 404                                                                                                              |
 
 ---
 
