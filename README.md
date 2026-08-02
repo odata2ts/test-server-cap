@@ -31,6 +31,13 @@ containment with **compositions**, and enum types with **value constraints**. Th
 narrower and cluster around spatial types, flags enums, operation overloads, alternate-key
 addressing, and a few places where the metadata under- or misstates actual runtime behaviour.
 
+The same service also answers **OData V2**, through the
+[`@cap-js-community/odata-v2-adapter`](https://github.com/cap-js-community/odata-v2-adapter) plugin -
+one CAP service, two protocol faces. What that translation does to the model is a question of its own
+and has a document of its own: **[FEATURE-COVERAGE-V2.md](FEATURE-COVERAGE-V2.md)**. Short version:
+reading is solid and the V2 metadata even describes media entities and ETags _better_ than the V4 one,
+while writing a single property reports success and destroys the value.
+
 ## Deliberately kept failing
 
 Where a request fails because of a CAP limitation, it is **kept**, so the failure stays visible.
@@ -79,6 +86,10 @@ npm start        # cds watch, serves on http://localhost:4004
 
 Service root: <http://localhost:4004/odata/v4/library/> ·
 metadata: <http://localhost:4004/odata/v4/library/$metadata>
+
+The V2 adapter mirrors that path with the version segment swapped, from its own defaults - nothing here
+configures it: <http://localhost:4004/odata/v2/library/> ·
+metadata: <http://localhost:4004/odata/v2/library/$metadata>
 
 Re-run `npm run deploy` after changing the model or the seed data to reset the database.
 
