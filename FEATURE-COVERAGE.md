@@ -453,6 +453,26 @@ foreign key pointing at a target that does not exist is accepted (`Location_Id: 
 is a `Copy` whose `MediumId` matches no medium. Whether that follows from the SQLite setup or from
 `@assert.integrity` not being switched on was not investigated.
 
+**A create that omits an integer key answers with the wrong entity** — the sharpest instance of the
+response not being trustworthy, and the one place where this server puts a workaround in the way.
+The reference model declares these keys plain: `Member.Id` is `Edm.Int32`, non-nullable, and **not**
+`Core.Computed`, so nothing in CAP fills it in. The insert goes through regardless — SQLite treats
+`PRIMARY KEY(Id)` on an `INTEGER` column as an alias for the rowid and assigns the next value
+silently — so the row is written, but CAP never learns that value. It then reads the result back with
+no key at hand and returns **201 with the first row of the set**:
+
+```
+POST /Members {"Name":"No Key"}   -> 201  {"Id":1,"Name":"Anna Berger"}   # a row that already existed
+GET  /Members                     -> the new member is there, as Id 9002
+```
+
+It applies to every integer-keyed set (`Members`, `Branches`, `Bookmobiles`, `Publishers`,
+`PublisherBranches`, `AudiobookChapters`), and it is not a deep-write matter at all — a plain create
+with no nested data does it too, while a UUID-keyed entity answers correctly. Since the ASP.NET
+implementation of the same model generates these keys, this server now does the same in a
+before-CREATE handler ([srv/handlers/keys.ts](srv/handlers/keys.ts)), which is what lets CAP describe
+what it created. A create that brings its own key is untouched.
+
 ---
 
 ## 5. Overview
