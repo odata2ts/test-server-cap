@@ -118,7 +118,11 @@ entity Copy {
 
 entity Loan {
   key Id         : UUID;
+
+      /** Reference model: `Core.Immutable` - settable on insert, fixed from then on. */
+      @Core.Immutable
       LoanedAt   : Timestamp not null;
+
       DueDate     : Date not null;
 
       /** Deliberately nullable: explicit-`null`-vs-absent-property test case (odata2ts#257/#218). */
