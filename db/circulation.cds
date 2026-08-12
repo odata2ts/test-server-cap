@@ -55,9 +55,17 @@ entity Member {
       /** Collection of a complex type - this one *does* produce a real `<ComplexType>`. */
       PreviousAddresses : many Catalog.PostalAddress;
 
+      /** Reference model: `Core.ComputedDefaultValue` - the client may send one, else the server fills in. */
+      @Core.ComputedDefaultValue
       ActiveSince       : Timestamp;
 
-      /** Deliberately different facets from Loan.LateFee (Decimal 5,2). */
+      /**
+       * Deliberately different facets from Loan.LateFee (Decimal 5,2).
+       *
+       * Reference model: `Core.Permissions` = `Read` - readable, never writable. The distinction against
+       * `@Core.Computed` is what it says about *reading*, which is nothing in the computed case.
+       */
+      @Core.Permissions: #Read
       Balance           : Decimal(9, 2);
 
       Loans             : Composition of many Loan on Loans.Member = $self;

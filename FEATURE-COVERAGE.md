@@ -301,7 +301,7 @@ listing `Condition` as a `PropertyPath`. The runtime behaviour is nonetheless fu
 (428 / 200 / 412, see §4.2) — only the annotation content is wrong, so a client reading metadata to
 discover the ETag property learns nothing.
 
-### 2.6 `@Core.Immutable` — declared _and_ enforced
+### 2.6 The managed-property terms — one of three is enforced
 
 Written straight through: `@Core.Immutable` on `Loan.LoanedAt` reaches the projection and is emitted
 against the service-level target, under the `Core` alias CAP declares in its `edmx:Reference`.
@@ -321,6 +321,31 @@ the response carries the stored value. Insert is untouched, which is exactly the
 Two limits are worth recording. The cleansing runs for the **root entity only** — a nested row of a
 deep update is left to the database layer, which CAP itself flags as a REVISIT — and it is skipped
 during draft activation, which is why `libx/_runtime/common/generic/input.js` repeats the check.
+
+**The other two are metadata only.** `@Core.ComputedDefaultValue` on `Member.ActiveSince` and
+`@Core.Permissions: #Read` on `Member.Balance` render exactly as declared — the enum value flat on the
+annotation, as the vocabulary defines it, which is not what ASP.NET Core does with the same term:
+
+```xml
+<Annotations Target="Library.Service.Members/ActiveSince">
+  <Annotation Term="Core.ComputedDefaultValue" Bool="true"/>
+</Annotations>
+<Annotations Target="Library.Service.Members/Balance">
+  <Annotation Term="Core.Permissions" EnumMember="Core.Permission/Read"/>
+</Annotations>
+```
+
+Neither changes what the runtime accepts. `_is_readonly()` consults `@readonly`, `@cds.on.insert`,
+`@cds.on.update`, `@Core.Computed` and `@Common.FieldControl` — **not** `@Core.Permissions` — and
+nothing generates a value for a `ComputedDefaultValue` property that arrives without one. Measured:
+
+```
+PATCH Members(1)  {"Balance": "999.99", "ActiveSince": "1999-01-01T00:00:00Z"}   200, both written
+```
+
+So a read-only property is writable in practice. `@readonly` is the annotation that would actually
+hold, and it is a different statement — CAP's own vocabulary rather than the standard term the
+reference model uses.
 
 Worth noting alongside: CAP emits `Core.ComputedDefaultValue` **by itself** on every UUID key it
 manages (`Reservations/Id` and the rest), without anything in the model asking for it.
@@ -506,27 +531,28 @@ what it created. A create that brings its own key is untouched.
 
 ### Modelling
 
-| Feature                                   | Realizable | Approach | Note                                                                     |
-| ----------------------------------------- | ---------- | -------- | ------------------------------------------------------------------------ |
-| Entity types, keys, composite keys        | ✅         | spec     |                                                                          |
-| Associations, navigation properties       | ✅         | spec     | plus extra FK properties (§2.2)                                          |
-| Referential constraints                   | ✅         | spec     | 9 emitted                                                                |
-| `OnDelete Cascade`                        | ✅         | spec     | from compositions, incl. one the reference model does not declare (§1.2) |
-| Singletons                                | ✅         | spec     |                                                                          |
-| **Open types**                            | ✅         | spec     | `@open` → `OpenType="true"`                                              |
-| Collections of primitives / complex types | ✅         | spec     |                                                                          |
-| Complex types                             | ✅         | spec     | in collections and operation signatures                                  |
-| Structured elements on entities           | ✅         | **own**  | flattened to columns (§2.1)                                              |
-| Type hierarchies                          | ✅         | **own**  | aspects/mixins, table-per-leaf-class (§1.1)                              |
-| Abstract types                            | ✅         | **own**  | replaced by reuse aspects; `abstract entity` deprecated                  |
-| Document/part-of structures               | ✅         | **own**  | compositions instead of containment (§1.2)                               |
-| Enumerations                              | ✅         | **own**  | `Validation.AllowedValues`, not `<EnumType>` (§1.3)                      |
-| Named type aliases                        | ✅         | **own**  | inlined, no `<TypeDefinition>` (§2.3)                                    |
-| **`Core.Immutable`**                      | ✅         | spec     | emitted **and** enforced — dropped from update payloads (§2.6)           |
-| Multiple namespaces per service           | ❌         | —        | one schema per service (§1.4)                                            |
-| Flags enums and the `has` operator        | ❌         | —        | follows from §1.3                                                        |
-| Alternate-key addressing                  | ❌         | —        | annotation renders, runtime ignores it                                   |
-| `Unicode` facet                           | ❌         | —        | dropped (§2.4)                                                           |
+| Feature                                         | Realizable | Approach | Note                                                                     |
+| ----------------------------------------------- | ---------- | -------- | ------------------------------------------------------------------------ |
+| Entity types, keys, composite keys              | ✅         | spec     |                                                                          |
+| Associations, navigation properties             | ✅         | spec     | plus extra FK properties (§2.2)                                          |
+| Referential constraints                         | ✅         | spec     | 9 emitted                                                                |
+| `OnDelete Cascade`                              | ✅         | spec     | from compositions, incl. one the reference model does not declare (§1.2) |
+| Singletons                                      | ✅         | spec     |                                                                          |
+| **Open types**                                  | ✅         | spec     | `@open` → `OpenType="true"`                                              |
+| Collections of primitives / complex types       | ✅         | spec     |                                                                          |
+| Complex types                                   | ✅         | spec     | in collections and operation signatures                                  |
+| Structured elements on entities                 | ✅         | **own**  | flattened to columns (§2.1)                                              |
+| Type hierarchies                                | ✅         | **own**  | aspects/mixins, table-per-leaf-class (§1.1)                              |
+| Abstract types                                  | ✅         | **own**  | replaced by reuse aspects; `abstract entity` deprecated                  |
+| Document/part-of structures                     | ✅         | **own**  | compositions instead of containment (§1.2)                               |
+| Enumerations                                    | ✅         | **own**  | `Validation.AllowedValues`, not `<EnumType>` (§1.3)                      |
+| Named type aliases                              | ✅         | **own**  | inlined, no `<TypeDefinition>` (§2.3)                                    |
+| **`Core.Immutable`**                            | ✅         | spec     | emitted **and** enforced — dropped from update payloads (§2.6)           |
+| `Core.ComputedDefaultValue`, `Core.Permissions` | ✅         | spec     | emitted as declared, but neither is enforced (§2.6)                      |
+| Multiple namespaces per service                 | ❌         | —        | one schema per service (§1.4)                                            |
+| Flags enums and the `has` operator              | ❌         | —        | follows from §1.3                                                        |
+| Alternate-key addressing                        | ❌         | —        | annotation renders, runtime ignores it                                   |
+| `Unicode` facet                                 | ❌         | —        | dropped (§2.4)                                                           |
 
 ### Data types
 
