@@ -301,6 +301,30 @@ listing `Condition` as a `PropertyPath`. The runtime behaviour is nonetheless fu
 (428 / 200 / 412, see §4.2) — only the annotation content is wrong, so a client reading metadata to
 discover the ETag property learns nothing.
 
+### 2.6 `@Core.Immutable` — declared _and_ enforced
+
+Written straight through: `@Core.Immutable` on `Loan.LoanedAt` reaches the projection and is emitted
+against the service-level target, under the `Core` alias CAP declares in its `edmx:Reference`.
+
+```xml
+<Annotations Target="Library.Service.Loans/LoanedAt">
+  <Annotation Term="Core.Immutable" Bool="true"/>
+</Annotations>
+```
+
+Unlike every other annotation in this section, this one is not just metadata. CAP's generic input
+validation knows the term — `_is_immutable()` covers `@Core.Immutable` and `@insertonly` — and on an
+update it **deletes the property from the payload** before any handler sees it
+(`lib/req/validate.js`, the `cleanse` branch). The value is dropped silently: no error, no warning, and
+the response carries the stored value. Insert is untouched, which is exactly the term's semantics.
+
+Two limits are worth recording. The cleansing runs for the **root entity only** — a nested row of a
+deep update is left to the database layer, which CAP itself flags as a REVISIT — and it is skipped
+during draft activation, which is why `libx/_runtime/common/generic/input.js` repeats the check.
+
+Worth noting alongside: CAP emits `Core.ComputedDefaultValue` **by itself** on every UUID key it
+manages (`Reservations/Id` and the rest), without anything in the model asking for it.
+
 ---
 
 ## 3. Data types
@@ -498,6 +522,7 @@ what it created. A create that brings its own key is untouched.
 | Document/part-of structures               | ✅         | **own**  | compositions instead of containment (§1.2)                               |
 | Enumerations                              | ✅         | **own**  | `Validation.AllowedValues`, not `<EnumType>` (§1.3)                      |
 | Named type aliases                        | ✅         | **own**  | inlined, no `<TypeDefinition>` (§2.3)                                    |
+| **`Core.Immutable`**                      | ✅         | spec     | emitted **and** enforced — dropped from update payloads (§2.6)           |
 | Multiple namespaces per service           | ❌         | —        | one schema per service (§1.4)                                            |
 | Flags enums and the `has` operator        | ❌         | —        | follows from §1.3                                                        |
 | Alternate-key addressing                  | ❌         | —        | annotation renders, runtime ignores it                                   |
