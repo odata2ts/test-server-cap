@@ -3,8 +3,11 @@ import cds from "@sap/cds";
 const { SELECT } = cds.ql;
 
 /**
- * Entity sets whose key is a single `Integer` element. The reference model declares these keys plain -
- * no `Core.Computed`, no generation strategy - so nothing fills them in on the way through CAP.
+ * Entity sets whose key is a single `Integer` element. The reference model declares these keys plain - no
+ * `Core.Computed`, no generation strategy - so nothing fills them in on the way through CAP. This handler
+ * does, and each of those keys carries `Core.ComputedDefaultValue` to say so on the wire: the client may
+ * supply a value, the server generates one otherwise. CAP states the term for a `UUID` key by itself and
+ * for an `Integer` key not at all, so without it a client has to treat the key as one it must invent.
  */
 const INTEGER_KEYED_ENTITIES = [
   "Members",
