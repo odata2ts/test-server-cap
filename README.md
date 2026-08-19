@@ -65,9 +65,11 @@ That is what makes it usable from an automated test suite: see
 [odata2ts](https://github.com/odata2ts/odata2ts/tree/main/int-test/cap), which starts and stops it per
 test run via testcontainers.
 
-`latest` is republished from every push to `main`, and a version tag additionally yields `1.2.3`,
-`1.2` and `1`. The image is smoke-tested before it is pushed - including one custom operation, since
-those come from the TypeScript handlers and are the part most likely to break.
+`latest` is republished from every push to `main`. Releases are cut by release-please: merging its
+release PR tags the commit and additionally publishes `0.1.0`, `0.1` and `0`. Automated consumers pin
+an exact version rather than `latest` - odata2ts does, and Renovate raises a PR there for each new
+release. The image is smoke-tested before it is pushed - including one custom operation, since those
+come from the TypeScript handlers and are the part most likely to break.
 
 ### Locally
 
