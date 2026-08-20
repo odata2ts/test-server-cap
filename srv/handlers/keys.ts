@@ -3,15 +3,20 @@ import cds from "@sap/cds";
 const { SELECT } = cds.ql;
 
 /**
- * Entity sets whose key is a single `Integer` element. The reference model declares these keys plain - no
- * `Core.Computed`, no generation strategy - so nothing fills them in on the way through CAP. This handler
- * does, and each of those keys carries `Core.ComputedDefaultValue` to say so on the wire: the client may
- * supply a value, the server generates one otherwise. CAP states the term for a `UUID` key by itself and
- * for an `Integer` key not at all, so without it a client has to treat the key as one it must invent.
+ * Entity sets whose key is a single `Integer` element **and** is generated here. The reference model
+ * declares its keys plain - no `Core.Computed`, no generation strategy - so nothing fills them in on the
+ * way through CAP. This handler does, and each of those keys carries `Core.ComputedDefaultValue` to say
+ * so on the wire: the client may supply a value, the server generates one otherwise. CAP states the term
+ * for a `UUID` key by itself and for an `Integer` key not at all, so without it a client has to treat the
+ * key as one it must invent.
+ *
+ * `Branches` is the one Integer-keyed set missing from this list, and missing on purpose: a branch code is
+ * allocated by the organisation, so that key stays the client's and unannotated. It is the counter-example
+ * the reference model asks for - without it every key in this service would look alike to a client.
  */
 const INTEGER_KEYED_ENTITIES = [
   "Members",
-  "Branches",
+  // "Branches" is deliberately absent: its key is the client's to assign - see db/circulation.cds
   "Bookmobiles",
   "Publishers",
   "PublisherBranches",
