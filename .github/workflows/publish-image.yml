@@ -180,7 +180,7 @@ jobs:
       # Only for a release candidate: `promote` is the only consumer, and it only ever runs for a release.
       - name: Keep the metadata for the release
         if: startsWith(github.head_ref, 'release-please--')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: metadata
           path: metadata/
