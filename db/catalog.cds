@@ -94,10 +94,13 @@ entity Audiobook : AudioMedium {
   /**
    * Reference model: `<NavigationProperty Name="Chapters" ContainsTarget="true">` - the chapters
    * are addressable *only* through their audiobook and have no entity set of their own.
-   * FEATURE-COVERAGE.md �1.2: CAP emits no `ContainsTarget`; `AudiobookChapter` gets a regular navigation property
-   * and (once exposed) an own entity set. The `cds.odata.containment` flag is inert in cds 10 -
-   * verified by compiling with `--odata-containment=true`, which changes nothing.
+   *
+   * `@odata.contained` is what makes CAP say so. It is the per-composition form of
+   * `cds.odata.containment`, which capire describes as opt-in today and as the default of the next
+   * major; taking it one composition at a time keeps the rest of the model addressable, which the
+   * suites against `Loans` and `Reservations` rely on. See FEATURE-COVERAGE.md §1.2.
    */
+  @odata.contained
   Chapters : Composition of many AudiobookChapter
                on Chapters.up_ = $self;
 }

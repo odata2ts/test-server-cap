@@ -91,16 +91,16 @@ One incidental effect: because media-bound operations are declared per concrete 
 ends up with **seven bindings** of `AvailableCopies` and `AvailableCopy` — which is, structurally,
 the reference model's "overload on the binding-type axis" case.
 
-### 1.2 Compositions instead of containment
+### 1.2 Compositions, and the containment they can be told to emit
 
 The reference model marks `Audiobook.Chapters` `ContainsTarget="true"`, so chapters exist only inside
 their audiobook.
 
 CAP expresses the same intent with **compositions**, its modelling primitive for
 document structures: a composition means "part of", implies cascading delete, and drives deep insert
-and deep update. CAP emits no `ContainsTarget` and exposes the target as a regular entity set.
+and deep update. By default it emits no `ContainsTarget` and exposes the target as a regular entity set.
 
-Behaviourally the important half is there:
+Behaviourally the important half is there without any of that:
 
 ```
 POST /Audiobooks  {"Title":"…","Chapters":[{"Id":1,"Title":"Kapitel A"}]}   -> 201, deep insert
@@ -108,9 +108,33 @@ GET  /Audiobooks(<id>)/Chapters                                             -> 2
 DELETE the audiobook                                                        -> chapters go too
 ```
 
-What is missing is the _addressing_ guarantee — chapters are also reachable directly at
-`/AudiobookChapters`. Verified that this is not a configuration matter: `cds.odata.containment` has
-no effect in cds 10, with either an unmanaged composition or a managed composition-of-aspect.
+Half of the _addressing_ story can be had, and this model now asks for it: `Audiobook.Chapters` carries
+**`@odata.contained`**, which puts `ContainsTarget="true"` on the navigation property and takes
+`AudiobookChapters` out of the entity container. It is the per-composition form of
+`cds.odata.containment`; capire describes containment as opt-in today and as the default of the next
+major release. Applied one composition at a time on purpose — the global flag would contain `Loans`,
+`Reservations` and `IdDocument` as well, and the suites addressing those entity sets directly depend on
+them staying in the container.
+
+**Only the declaration follows, not the routing.** Verified against cds 10.0.5: `$metadata` drops the
+entity set, and `/Audiobooks(<id>)/Chapters` works — but `/AudiobookChapters` still answers `200` with
+the full collection, and its context URL reads `$metadata#AudiobookChapters`, naming an entity set the
+document no longer declares. So a client is told the chapters are contained while the flat path keeps
+working. CSDL §8.4 requires that a contained entity not also belong to a declared entity set, which the
+metadata now honours; the resource paths a service actually serves are supposed to follow from that same
+container, and here they do not.
+
+For odata2ts this is the useful half regardless: the point of the attribute is that `Audiobooks/Chapters`
+can now be told apart from an association in `$metadata`, which is what
+`deepInsertProps: "composition-only"` reads. The addressing guarantee remains outstanding.
+
+The V2 rendition is untouched: V2 has no containment to express, so `AudiobookChapters` remains an
+entity set there.
+
+An earlier revision of this document claimed the flag "has no effect in cds 10". That was a false
+negative from the flag's spelling: `cds compile --to edmx --odata-containment` is silently ignored,
+while `cds.odata.containment` in `package.json` and `cds_odata_containment=true` in the environment both
+work (verified against cds 10.0.5).
 
 **Deep writes follow the same line**, and capire states the rule directly: compositions → _"runtime
 deeply creates or updates entries in target entities"_, associations → _"runtime fills in foreign keys
@@ -130,11 +154,17 @@ rule presents itself — measured against this model:
 | to-one association, any non-key property                    | **400** `Property "Name" does not exist in Location` — also when the key is present alongside it                         |
 | to-many association `Books/Copies`                          | **201, and the payload is dropped in silence** — it is not even validated: `{"TotalNonsense":42}` passes just as quietly |
 
-The last two rows are the sharp edge, and neither is visible in `$metadata`: the same construct — a
-nested object on a navigation property — is a hard 400 in one case and a silent no-op in the other,
-while a server that models the relationship as containment creates the entity in both. A generated
-client that types navigation properties as writable can therefore emit payloads that are correct per
-EDM and still rejected or ignored here.
+The last two rows are the sharp edge: the same construct — a nested object on a navigation property —
+is a hard 400 in one case and a silent no-op in the other, while a server that models the relationship
+as containment creates the entity in both. A generated client that types navigation properties as
+writable can therefore emit payloads that are correct per EDM and still rejected or ignored here.
+
+`@odata.contained` is what lets a client see the difference at all, and only for the composition it is
+put on: `Audiobooks/Chapters` now says `ContainsTarget="true"` while `Books/Copies` says nothing, so the
+two rows above are told apart by `$metadata` rather than by trial. The remaining compositions —
+`Members/Loans`, `Members/Reservations`, `Members/IdDocument` — stay uncontained for the addressing
+reason given above, so for those the distinction is still invisible. odata2ts consumes this through
+`deepInsertProps: "composition-only"`.
 
 The asymmetry has a logic once the rule is in view: for a to-one association the foreign key sits on
 the entity being written, so a key is something the runtime can act on; for a to-many it sits on the
