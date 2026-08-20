@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/odata2ts/test-server-cap/compare/v0.1.0...v0.2.0) (2026-08-20)
+
+
+### Features
+
+* let the client assign the Branch key ([63ef46e](https://github.com/odata2ts/test-server-cap/commit/63ef46ed825e35fa570a3ed6173ce3857d0d16b6))
+
 ## 0.1.0 (2026-08-19)
 
 
