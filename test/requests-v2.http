@@ -1,0 +1,101 @@
+###############################################################################
+# "Library" OData V2 test model - request collection
+#
+# The same service, served as OData V2 by the `@cap-js-community/odata-v2-adapter` plugin, which sits in
+# front of the V4 endpoint and translates both ways. There is only ever one server: the V2 URL is the V4
+# one with the version segment changed.
+#
+# What is worth testing here is not the model - that is the V4 collection's job - but the *translation*:
+# which V2 renderings the adapter produces for types V4 spells differently, and where it deviates from
+# what a V2 client would expect. odata2ts consumes this endpoint in int-test/cap/test/v2.
+#
+# Start the server first:   npm run deploy && npm start
+# Every request carries the result actually observed against the published image.
+###############################################################################
+
+@host = http://localhost:4004/odata/v2/library
+
+# Fixed keys from the seed data (db/data/*.csv) - the same rows the V4 collection uses.
+@book = 11111111-1111-1111-1111-111111111111
+
+###############################################################################
+# Service document & metadata
+###############################################################################
+
+### 200 - the V2 service document is an object, not V4's `value` array: {"d":{"EntitySets":[...]}}
+GET {{host}}/
+
+### 200 - JSON without asking for it. Strict V2 defaults to Atom XML and expects `$format=json` or an
+### Accept header; the adapter answers JSON either way. A deviation, recorded rather than corrected.
+GET {{host}}/Books?$top=1&$select=Title
+
+### 200 - the V2 metadata document: edmx 1.0 and DataServiceVersion="2.0", where V4 emits edmx 4.0.
+GET {{host}}/$metadata
+
+###############################################################################
+# Reading: V2 payload shape
+###############################################################################
+
+### 200 - a collection is wrapped twice, `d.results`, where V4 has a flat `value` array.
+GET {{host}}/Books?$top=1
+
+### 200 - a single entity is `d` directly, with no `results` in between.
+GET {{host}}/Books(guid'{{book}}')
+
+### 200 - the key of a Guid entity is addressed with the `guid'...'` literal. V4 takes it bare, and
+### getting this wrong is the classic V2 client bug.
+GET {{host}}/Books(guid'{{book}}')?$select=Title
+
+### 200 - `$select` does not narrow as it does in V4: `Id` and `__metadata` come back regardless, since
+### the adapter needs the key to build the entity uri.
+GET {{host}}/Books?$top=1&$select=Title
+
+### 200 - a navigation property that was not expanded is a `__deferred` link, not an absent property.
+### V4 simply omits it. A client that reads `Copies` as an array finds an object here.
+GET {{host}}/Books(guid'{{book}}')
+
+### 200 - expanding it replaces the `__deferred` object with the entity.
+GET {{host}}/Books?$top=1&$expand=Publisher
+
+###############################################################################
+# Type renderings - where V2 and V4 disagree on the wire
+###############################################################################
+
+### 200 - `Edm.DateTime` is the tick string `/Date(-1410134400000)/`, against V4's ISO 8601. Negative
+### for a date before 1970, which is what this seed row is chosen for.
+GET {{host}}/Books(guid'{{book}}')?$select=PublicationDate
+
+### 200 - `Edm.Decimal` is a *string* (`"87.5"`), because V2 cannot express it exactly as a JSON number.
+### `Edm.Int32` stays a number, so a client cannot simply treat every numeric as one or the other.
+GET {{host}}/Books(guid'{{book}}')?$select=PopularityScore,PageCount
+
+### 200 - a to-one association is flattened to its foreign key, `Publisher_Id`, rather than appearing as
+### a nested object.
+GET {{host}}/Books(guid'{{book}}')?$select=Publisher_Id
+
+### 200 - `Keywords` comes back as a JSON array although V2 has no collection-valued properties at all.
+### The adapter passes the V4 shape straight through, so this is not valid V2 (odata2ts#372/#379).
+### A *pass* in the sense that the request works - listed because the answer is wrong for the protocol.
+GET {{host}}/Books(guid'{{book}}')?$select=Keywords
+
+###############################################################################
+# Query options
+###############################################################################
+
+### 200 - `$count` is a path segment in V4 but its own option in V2. This is V2's spelling and it
+### answers plain text, not JSON.
+GET {{host}}/Books/$count
+
+### 200 - `$inlinecount=allpages` is V2's `$count=true`, and `__count` is a *string*, per the V2 spec.
+GET {{host}}/Books?$inlinecount=allpages&$top=1&$select=Title
+
+### 200 - `$filter` with a V2 comparison operator.
+GET {{host}}/Books?$filter=PageCount gt 200&$top=1&$select=Title
+
+###############################################################################
+# Errors
+###############################################################################
+
+### 404 - the V2 error body nests the text: `error.message` is `{"lang":…,"value":…}`, where V4 has a
+### plain string. A client reading `error.message` as text gets an object here.
+GET {{host}}/Nope

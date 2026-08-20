@@ -1,0 +1,8 @@
+--b
+Content-Type: application/http
+Content-Transfer-Encoding: binary
+
+GET Books?$top=1 HTTP/1.1
+
+
+--b--
