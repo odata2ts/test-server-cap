@@ -45,3 +45,44 @@ jobs:
           curl -sfS 'http://localhost:4004/odata/v4/library/$metadata' > /dev/null
           curl -sfS 'http://localhost:4004/odata/v4/library/Books?$top=1' > /dev/null
           curl -sfS 'http://localhost:4004/odata/v4/library/TotalMediaCount()' > /dev/null
+
+  # Replays the request collection against the image, the way consumers actually run this server. The
+  # annotation on each request is the assertion, so a changed response fails here rather than being
+  # noticed by a consumer later - see test/README.md.
+  requests:
+    # Not on a release PR: it carries the version bump and the changelog on top of a main that already
+    # passed this, and publish-image.yml builds and smoke-tests the very image that release ships.
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # Static, no server involved: every request has to carry a `### <status>` annotation, because that
+      # annotation is what the run asserts against. One without it would be sent and its answer accepted
+      # unchecked.
+      - name: Check the annotations
+        run: npm run lint:requests
+
+      - uses: docker/setup-buildx-action@v4
+
+      # The same context and Dockerfile as publish-image.yml, so the layer cache is shared with it.
+      - name: Build the image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: test-server-cap:local
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # One fresh container per file: both collections write to the same seed rows. See test/harness/run.js.
+      - name: Run the request collection
+        run: node test/harness/run.js

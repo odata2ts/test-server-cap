@@ -285,6 +285,53 @@ Content-Type: application/json
 
 {"Title":"Bind Probe","Publisher@odata.bind":"Publishers(1)"}
 
+###############################################################################
+# Deep insert: Composition vs Association
+#
+# CDS distinguishes the two, and only a Composition is a containment relationship whose target is created
+# with its parent. An Association is a reference: the nested object names an entity that must already
+# exist. OData does not make that distinction visible in $metadata, so it is stated here instead.
+#
+# Compositions in this model: Member.IdDocument, Member.Loans, Member.Reservations, Audiobook.Chapters.
+# Associations: Book.Copies, Book.Publisher, Copy.Location, Medium.StorageLocation.
+###############################################################################
+
+### 201 - Composition: the nested entity is created and readable through the parent.
+### The counterpart of the Audiobook/Chapters deep insert above, on a to-one composition.
+POST {{host}}/Members
+Content-Type: application/json
+
+{"Name":"Composition Deep Insert","IdDocument":{"UploadedAt":"2026-08-20T10:00:00Z"}}
+
+### 200 - and it really was created, not merely echoed back
+GET {{host}}/Members?$filter=Name eq 'Composition Deep Insert'&$expand=IdDocument
+
+### 400 - Association to one: a nested object is read as a *reference*, so only key properties are
+### allowed in it. "Name" is not one, and naming it is what makes this fail - the error names the
+### navigation property as its target.
+POST {{host}}/Books
+Content-Type: application/json
+
+{"Title":"Association Deep Insert","Publisher":{"Name":"New Publisher"}}
+
+### 201 - the same association with nothing but the key: accepted, and linked rather than created.
+### The nested-object spelling of Publisher@odata.bind above.
+POST {{host}}/Books
+Content-Type: application/json
+
+{"Title":"Association By Key","Publisher":{"Id":1}}
+
+### 201 - Association to many: the nested array is *silently dropped*. The request reports success and
+### the copy is not created - see the next request. A composition would have created it.
+POST {{host}}/Books
+Content-Type: application/json
+
+{"Title":"Association Deep Insert Many","Copies":[{"InventoryNumber":9901,"Condition":1}]}
+
+### 200 - nothing was created: the book is there, its Copies are empty. The negative half of the
+### request above, and the reason that one is worth having.
+GET {{host}}/Books?$filter=Title eq 'Association Deep Insert Many'&$expand=Copies
+
 ### 201 - an @odata.type discriminator is accepted but has no effect: without
 ### inheritance (FEATURE-COVERAGE.md §1.1) there is no subtype to select (odata2ts#257)
 POST {{host}}/Books
@@ -302,18 +349,14 @@ Content-Type: application/json
 
 {"requests":[{"id":"1","method":"get","url":"Books?$top=1"}]}
 
-### 200 - multipart batch
+### 200 - multipart batch. The body is a file of its own because HTTP multipart requires CRLF line
+### endings: sent with LF the server answers 400 HPE_INVALID_VERSION, which is correct of it. Most
+### .http clients normalise line endings while parsing, so the body is imported verbatim instead -
+### `<@` is understood by httpyac, the VS Code REST Client and the IntelliJ HTTP client alike.
 POST {{host}}/$batch
 Content-Type: multipart/mixed;boundary=b
 
---b
-Content-Type: application/http
-Content-Transfer-Encoding: binary
-
-GET Books?$top=1 HTTP/1.1
-
-
---b--
+<@ ./batch-multipart.txt
 
 ###############################################################################
 # Known failures - kept deliberately, they document CAP's limits
