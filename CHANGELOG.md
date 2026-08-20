@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/odata2ts/test-server-cap/compare/v0.2.0...v0.3.0) (2026-08-20)
+
+
+### Features
+
+* replay the request collection in CI, and cover V2 and deep insert ([#38](https://github.com/odata2ts/test-server-cap/issues/38)) ([4293263](https://github.com/odata2ts/test-server-cap/commit/42932631788a722cff0f3f3a20f5310629cd29dc))
+
 ## [0.2.0](https://github.com/odata2ts/test-server-cap/compare/v0.1.0...v0.2.0) (2026-08-20)
 
 
