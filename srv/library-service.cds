@@ -82,9 +82,10 @@ service Service @(path: '/odata/v4/library') {
                             };
 
   /**
-   * Reference model: reachable only via containment from `Audiobook`, with no entity set of its
-   * own. CAP expresses "part of" with compositions rather than containment, so the target needs
-   * its own entity set - FEATURE-COVERAGE.md §1.2.
+   * Reference model: reachable only via containment from `Audiobook`, with no entity set of its own -
+   * which is what `@odata.contained` on `Audiobook.Chapters` achieves. The projection stays: it names
+   * the type the containment navigation property points at, and the V2 rendition still needs an entity
+   * set, V2 having no containment to express. See FEATURE-COVERAGE.md §1.2.
    */
   entity AudiobookChapters as projection on Catalog.AudiobookChapter;
 
