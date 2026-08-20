@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/odata2ts/test-server-cap/compare/v0.3.0...v0.4.0) (2026-08-20)
+
+
+### Features
+
+* mark Audiobook.Chapters as contained ([9438e09](https://github.com/odata2ts/test-server-cap/commit/9438e0994c62de304a1875fafbd422afa76c0e2a))
+
 ## [0.3.0](https://github.com/odata2ts/test-server-cap/compare/v0.2.0...v0.3.0) (2026-08-20)
 
 
