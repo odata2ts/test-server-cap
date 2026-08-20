@@ -348,7 +348,15 @@ hold, and it is a different statement — CAP's own vocabulary rather than the s
 reference model uses.
 
 Worth noting alongside: CAP emits `Core.ComputedDefaultValue` **by itself** on every UUID key it
-manages (`Reservations/Id` and the rest), without anything in the model asking for it.
+manages (`Reservations/Id` and the rest), without anything in the model asking for it. An `Integer` key
+gets nothing, so those carry the term by hand — which is how every key in this service ends up stating
+who supplies it.
+
+Every key but one. `Branches/Id` is a branch code the organisation allocates, so it stays unannotated
+and unlisted in `srv/handlers/keys.ts`: a create without it is a create with no key, and fails. That is
+deliberate and is what the reference model asks of this entity — without a key the client owns, every
+key in the service would look alike to one reading `$metadata`, and there would be nothing to tell a
+key it must supply from one it must not. `Copies` is the composite case of the same thing.
 
 ---
 
