@@ -44,7 +44,8 @@ Where a request fails because of a CAP limitation, it is **kept**, so the failur
 `test/requests.http` has a dedicated section for these, cross-referenced to
 `FEATURE-COVERAGE.md`. Examples:
 
-- `GET /Books(ISBN='…')` → 400 - `@Core.AlternateKeys` is in the metadata but the runtime ignores it
+- `GET /Books(ISBN='…')` → 400 - CAP's routing has no notion of alternate keys, so `@Core.AlternateKeys`
+  is deliberately not annotated rather than left as an unbacked metadata promise
 - `GET /Members(1)?$select=Address/City` → 400 - structured elements are flattened by default
 - `GET /Branches?$filter=Amenities has 2` → 400 - no flags enum, so no `has` operator
 - `Branch.Location` is declared `Edm.GeographyPoint` but delivers a WKT string

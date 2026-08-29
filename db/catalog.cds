@@ -51,7 +51,7 @@ aspect Medium {
 
 /** Reference model: `<EntityType Name="PrintMedium" BaseType="Medium" Abstract="true">`. */
 aspect PrintMedium : Medium {
-  /** Alternate key in the reference model - see the `@Core.AlternateKeys` annotations in srv/. */
+  /** Alternate key in the reference model; not annotated as one here - see srv/library-service.cds. */
   ISBN : Catalog.ISBN;
 }
 

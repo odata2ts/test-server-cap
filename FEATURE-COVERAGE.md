@@ -218,9 +218,9 @@ properties pass through. `CollectorsItem` uses it.
 
 Also: singletons (`@odata.singleton`), composite keys, referential constraints (9 emitted, including
 the composite `Loan` → `Copy`), `OnDelete Cascade`, `Collection(primitive)`, `Collection(complex)`,
-`DefaultValue`, `Core.Computed`, `Capabilities.SearchRestrictions` (honoured — `$search` works),
-`Core.AlternateKeys` (in metadata), the `MaxLength`/`Precision`/`Scale`/`Nullable` facets, `Edm.Binary`
-with `/$value`, unidirectional navigation, and `NavigationPropertyBinding` for every target.
+`DefaultValue`, `Core.Computed`, `Capabilities.SearchRestrictions` (honoured — `$search` works), the
+`MaxLength`/`Precision`/`Scale`/`Nullable` facets, `Edm.Binary` with `/$value`, unidirectional
+navigation, and `NavigationPropertyBinding` for every target.
 
 ---
 
@@ -528,12 +528,20 @@ Not implemented:
 | ----------------------------------------------- | --------------------------------------------- |
 | `POST /Books/$query` with `text/plain` body     | 400                                           |
 | `$ref` relationship management                  | 404                                           |
-| Alternate-key addressing `Books(ISBN='…')`      | 400 — annotation present, runtime ignores it  |
+| Alternate-key addressing `Books(ISBN='…')`      | 400 — not annotated, see below                |
 | `cast()` in `$filter`                           | 501 Not Implemented                           |
 | Function/action imports in the service document | absent — `IncludeInServiceDocument` never set |
 
-The alternate-key row is the sharpest case in this server of metadata promising what the runtime does
-not deliver, which is why it is kept in [test/requests.http](test/requests.http).
+**Alternate-key addressing is not something CAP's own routing resolves at all** - it matches an entity
+path segment against the declared key only, with no notion of `Core.AlternateKeys`, and there is no
+supported, documented way to add one (capire's protocol and bootstrapping guides say nothing about it,
+and no such recipe turned up anywhere else either). Annotating `ISBN` as an alternate key regardless -
+which is what an earlier revision of this service did, purely to mirror the reference model's metadata -
+would put a promise into `$metadata` this service cannot back with matching behaviour, contrary to this
+document's own premise that every statement here is verified against the running service, not asserted
+from documentation. So this service deliberately does **not** emit `@Core.AlternateKeys`, and
+`Books(ISBN='…')` fails the same way any other request naming an unknown key predicate would - kept in
+[test/requests.http](test/requests.http) as the genuine gap it is.
 
 One thing the deep-write probes turned up in passing, listed for honesty rather than as a verdict: a
 foreign key pointing at a target that does not exist is accepted (`Location_Id: 987654` → 201), and so
@@ -589,7 +597,7 @@ what it created. A create that brings its own key is untouched.
 | `Core.ComputedDefaultValue`, `Core.Permissions` | ✅         | spec     | emitted as declared, but neither is enforced (§2.6)                      |
 | Multiple namespaces per service                 | ❌         | —        | one schema per service (§1.4)                                            |
 | Flags enums and the `has` operator              | ❌         | —        | follows from §1.3                                                        |
-| Alternate-key addressing                        | ❌         | —        | annotation renders, runtime ignores it                                   |
+| Alternate-key addressing                        | ❌         | —        | no supported way to back it; deliberately not annotated (§4.2)           |
 | `Unicode` facet                                 | ❌         | —        | dropped (§2.4)                                                           |
 
 ### Data types

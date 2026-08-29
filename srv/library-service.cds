@@ -31,12 +31,12 @@ service Service @(path: '/odata/v4/library') {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * `@Core.AlternateKeys` renders correctly into `$metadata`, but CAP's runtime does **not**
-   * resolve alternate-key addressing: `Books(ISBN='...')` fails. Kept deliberately so the
-   * discrepancy between metadata promise and runtime behaviour stays observable - §4.2.
+   * The reference model declares `ISBN` a `Core.AlternateKeys` key (also on Magazines and
+   * TradeJournals below). Deliberately **not** reproduced here: CAP's own OData routing has no
+   * notion of alternate keys at all, and offers no supported way to add one - so annotating it
+   * would put a promise into `$metadata` this service cannot keep. FEATURE-COVERAGE.md §4.2.
    */
   @Capabilities.SearchRestrictions.Searchable: true
-  @Core.AlternateKeys                        : [{Key: [{Name: ISBN}]}]
   @cds.redirection.target
   entity Books             as projection on Catalog.Book actions {
                               function LoanMetrics()                       returns Catalog.MediumStats;
@@ -53,7 +53,6 @@ service Service @(path: '/odata/v4/library') {
                             };
 
   @Capabilities.SearchRestrictions.Searchable: true
-  @Core.AlternateKeys                        : [{Key: [{Name: ISBN}]}]
   entity Magazines         as projection on Catalog.Magazine actions {
                               function LoanMetrics()                       returns Catalog.MediumStats;
                               function AvailableLanguages(in : many $self) returns array of String;
@@ -63,7 +62,6 @@ service Service @(path: '/odata/v4/library') {
                             };
 
   @Capabilities.SearchRestrictions.Searchable: true
-  @Core.AlternateKeys                        : [{Key: [{Name: ISBN}]}]
   entity TradeJournals     as projection on Catalog.TradeJournal actions {
                               function LoanMetrics()                       returns Catalog.MediumStats;
                               function AvailableLanguages(in : many $self) returns array of String;
