@@ -10,3 +10,9 @@ gen
 .env
 *.log
 .DS_Store
+
+# Agent docs & tool state live in the workspace root only
+CLAUDE.md
+AGENTS.md
+.claude/
+.agents/
