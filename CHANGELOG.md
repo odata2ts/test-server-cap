@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/odata2ts/test-server-cap/compare/v0.4.0...v0.4.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **ci:** re-run release-please after promote to fix the draft-release race ([53960ca](https://github.com/odata2ts/test-server-cap/commit/53960caf254e63e76ad08f4ab95febce707151ef))
+* stop emitting Core.AlternateKeys, since routing can't back it ([a3eff7a](https://github.com/odata2ts/test-server-cap/commit/a3eff7a454c7317bee823223b3b944bcd61a9836))
+
 ## [0.4.0](https://github.com/odata2ts/test-server-cap/compare/v0.3.0...v0.4.0) (2026-08-20)
 
 
