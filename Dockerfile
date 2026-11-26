@@ -5,7 +5,7 @@
 # Consumers start this image, point their client at http://<host>:<port>/odata/v4/library and get a
 # server with fixed, well-known seed data - see odata2ts/odata2ts, int-test/cap.
 
-FROM node:24-slim
+FROM node:26-slim
 
 # `cds serve` needs the dev dependencies (`@sap/cds-dk`, `tsx`), so NODE_ENV must not be "production":
 # npm would skip them and the service implementation would not load.
